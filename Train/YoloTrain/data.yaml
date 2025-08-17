@@ -1,0 +1,15 @@
+path: ./dataset  # dataset root dir
+train: images/train  # train images (relative to 'path')
+val: images/val  # val images (relative to 'path')
+
+# Classes
+names:
+  0: udark
+  1: cdark
+
+# Number of classes
+nc: 2
+
+# Dataset properties
+channels: 3  # number of channels
+

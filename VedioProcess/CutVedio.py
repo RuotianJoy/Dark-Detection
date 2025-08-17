@@ -37,7 +37,7 @@ def extract_frames(video_path, output_folder, frame_interval=30):
     print("视频处理完成")
 
 # 示例调用
-video_path = "../Vedio/数据二.mp4"         # 替换为你的视频文件路径
-output_folder = "extracted_frames"  # 替换为你想保存帧图片的文件夹路径
+video_path = "../Vedio/Processed2.mp4"         # 替换为你的视频文件路径
+output_folder = "Processed_extracted_frames"  # 替换为你想保存帧图片的文件夹路径
 
 extract_frames(video_path, output_folder, frame_interval=30)

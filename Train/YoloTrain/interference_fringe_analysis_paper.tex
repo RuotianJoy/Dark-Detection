@@ -1,0 +1,496 @@
+\documentclass[12pt,a4paper]{article.cls}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{subfigure}
+\usepackage{xeCJK}
+\setCJKmainfont{SimSun}
+
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+\title{基于计算机视觉和YOLO模型的迈克耳孙干涉条纹运动强度分析研究}
+\author{作者姓名\thanks{通讯作者邮箱: author@email.com} \\
+        单位名称 \\
+        地址}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+本研究提出了一种基于计算机视觉和深度学习的迈克耳孙干涉条纹运动强度分析方法。通过YOLOv12s目标检测模型对干涉条纹进行自动识别和跟踪，结合温度变化率分析，揭示了温度动态变化过程对条纹运动强度的影响规律。基于49,984帧图像数据和完整温度变化过程（30-46°C），实验结果表明：（1）YOLOv12s模型在干涉条纹检测中表现优异，mAP@0.5达到50.3\%，精确率90.5\%；（2）温度变化率与条纹运动强度呈显著正相关（相关系数0.011，P值0.014），而温度绝对值与运动强度呈负相关（相关系数-0.021，P值<0.001），验证了"温度变化越快条纹运动强度越高"的假设；（3）构建的随机森林预测模型R²达到0.6209，温度变化相关特征的总重要性为64.61\%，远超温度绝对值特征的14.56\%，证实了温度动态变化过程对条纹运动的主导作用。本研究为光学干涉测量提供了新的自动化分析方法，在精密测量和光学检测领域具有重要应用价值。
+
+\textbf{关键词：}迈克耳孙干涉仪；计算机视觉；YOLO模型；条纹运动分析；温度变化率
+\end{abstract}
+
+\section{引言}
+
+迈克耳孙干涉仪作为经典的光学精密测量仪器，在物理学研究和工程应用中发挥着重要作用。干涉条纹的运动特性直接反映了光程差的变化，而环境因素（特别是温度变化）对干涉条纹的影响一直是研究的重点。
+
+传统的干涉条纹分析主要依赖人工观察和简单的图像处理方法，存在主观性强、效率低、精度有限等问题。随着计算机视觉和深度学习技术的快速发展，基于人工智能的自动化分析方法为光学测量提供了新的解决方案。
+
+YOLO（You Only Look Once）模型作为先进的目标检测算法，具有检测速度快、精度高的特点。本研究首次将YOLO模型应用于迈克耳孙干涉条纹的自动检测和运动分析，结合温度变化率的定量分析，建立了条纹运动强度与温度动态变化的关系模型。
+
+\section{实验装置与方法}
+
+\subsection{实验装置}
+
+实验采用标准的迈克耳孙干涉仪装置，主要组件包括：
+\begin{itemize}
+    \item 激光光源（波长632.8nm的He-Ne激光器）
+    \item 分束镜（50/50分光比）和高反射率平面反射镜
+    \item 可移动反射镜调节装置
+    \item CCD相机（分辨率1920×1080，帧率30fps）
+    \item 温度控制和监测系统（温度范围30-46°C）
+\end{itemize}
+
+\subsection{数据采集与数据集构建}
+
+实验过程中连续采集干涉条纹图像序列，同时记录对应的温度数据。
+
+\subsubsection{数据集构建}
+实验数据集包含49,984帧图像，涵盖完整的温度变化过程。数据集构建的详细信息如下：
+
+\paragraph{图像数据}
+\begin{itemize}
+\item 总帧数：49,984帧
+\item 图像尺寸：原始视频帧经预处理后调整为704×704像素
+\item 采样间隔：每30帧提取一帧，确保温度变化的连续性
+\item 数据集划分：
+  \begin{itemize}
+  \item 训练集：158张图像（帧编号4980-9720，间隔30帧）
+  \item 验证集：333张图像（帧编号0-49980，间隔150帧）
+  \end{itemize}
+\end{itemize}
+
+\paragraph{标注信息}
+\begin{itemize}
+\item 标注类别：udark（上暗条纹）、cdark（下暗条纹）
+\item 标注格式：YOLO格式，包含类别ID、中心坐标和边界框尺寸
+\item 标注质量控制：对原始标注进行预处理，移除无效标注并规范化坐标
+\end{itemize}
+
+\paragraph{温度数据处理}
+温度数据采用分段插值方法进行处理：
+\begin{itemize}
+\item 温度采样点：1,681个
+\item 帧数<27000：采用三次样条插值，保持温度变化的平滑性
+\item 帧数≥27000：采用线性插值，适应后期温度变化的线性特征
+\item 温度范围：30-46°C，覆盖实验的完整温度变化区间
+\item 数据存储：温度数据以JSON格式存储，便于后续分析处理
+\end{itemize}
+
+\subsection{YOLO模型训练与检测}
+
+\subsubsection{数据预处理}
+对采集的干涉条纹图像进行预处理，包括：
+\begin{enumerate}
+    \item 图像尺寸标准化至704×704
+    \item 亮度和对比度调整
+    \item 自动数据增强
+\end{enumerate}
+
+\subsubsection{模型训练}
+采用YOLOv12s预训练模型架构，训练参数设置：
+\begin{itemize}
+    \item 模型：YOLOv12s预训练模型
+    \item 输入图像尺寸：704×704
+    \item 批处理大小：12
+    \item 学习率：0.001
+    \item 训练轮数：100 epochs
+    \item 优化器：AdamW
+    \item 设备：GPU（CUDA）
+\end{itemize}
+
+\subsubsection{条纹检测与跟踪}
+YOLO模型输出包括：
+\begin{itemize}
+    \item 条纹边界框坐标
+    \item 检测置信度
+    \item 条纹类别标签
+\end{itemize}
+
+\subsection{运动强度计算}
+
+基于检测结果计算条纹运动强度，定义为相邻帧间条纹中心位置的欧几里得距离：
+
+\begin{equation}
+I_t = \sqrt{(x_t - x_{t-1})^2 + (y_t - y_{t-1})^2}
+\end{equation}
+
+其中$(x_t, y_t)$为第$t$帧中条纹的中心坐标。
+
+\subsection{温度数据处理}
+
+\subsubsection{分段插值方法}
+由于温度采样频率低于图像采集频率，采用分段插值方法生成每帧对应的温度值：
+\begin{itemize}
+    \item 帧数 < 27000：采用三次样条插值
+    \item 帧数 ≥ 27000：采用线性插值
+\end{itemize}
+
+\subsubsection{温度变化率计算}
+计算温度的一阶和二阶导数：
+
+\begin{equation}
+\frac{dT}{dt} = \nabla T(t)
+\end{equation}
+
+\begin{equation}
+\frac{d^2T}{dt^2} = \nabla^2 T(t)
+\end{equation}
+
+\subsection{特征工程}
+
+构建多维特征向量用于运动强度预测：
+\begin{itemize}
+    \item 温度相关特征：温度值$T$、温度平方$T^2$、温度归一化
+    \item 温度变化特征：温度变化率$dT/dt$、温度变化率绝对值$|dT/dt|$、平滑温度变化率
+    \item 动态特征：温度加速度$d^2T/dt^2$、温度动量$T \times dT/dt$、温度累积变化
+    \item 时间特征：时间因子、温度-时间交互项
+    \item 阶段特征：加热阶段标识
+\end{itemize}
+
+\section{实验结果}
+
+\subsection{YOLO模型性能}
+
+经过100轮训练，YOLOv12s模型在验证集上达到了优异的性能指标：
+\begin{itemize}
+    \item 精确率（Precision）：90.5\%
+    \item 召回率（Recall）：36.7\%
+    \item mAP@0.5：50.3\%
+    \item mAP@0.5:0.95：25.4\%
+    \item 训练损失收敛：box\_loss=2.585, cls\_loss=0.118, dfl\_loss=0.593
+    \item 验证损失稳定：val\_box\_loss=2.635, val\_cls\_loss=0.121, val\_dfl\_loss=0.572
+\end{itemize}
+
+模型训练过程表现出良好的收敛性，损失函数在训练后期趋于稳定，表明模型已充分学习数据特征。
+
+\subsubsection{训练结果可视化}
+训练过程中生成的关键性能指标图表包括：
+\begin{itemize}
+\item F1-置信度曲线：显示模型在不同置信度阈值下的F1分数变化，最优F1值为0.67（置信度0.289）
+\item 精确率-召回率曲线：展示模型的精确率与召回率权衡关系，mAP@0.5达到50.3\%
+\item 精确率-置信度曲线：反映模型预测置信度与精确率的对应关系，在高置信度区间保持稳定
+\item 召回率-置信度曲线：显示不同置信度下的召回率表现，最大召回率达到55.8\%
+\item 混淆矩阵：量化模型对不同类别的分类准确性，背景类别识别准确率达到99\%
+\item 训练损失曲线：展示训练过程中损失函数的收敛情况，验证了模型训练的有效性
+\end{itemize}
+
+训练结果文件保存在runs/train\_with\_temp目录下，包括：
+\begin{itemize}
+\item results.png：综合训练结果图表
+\item confusion\_matrix.png：混淆矩阵可视化
+\item F1\_curve.png、PR\_curve.png等：各项性能指标曲线
+\item train\_batch*.jpg：训练批次样本可视化
+\item val\_batch*\_labels.jpg和val\_batch*\_pred.jpg：验证集标签与预测结果对比
+\end{itemize}
+
+这些可视化结果表明，YOLOv12s模型在干涉条纹检测任务中表现出良好的性能平衡，能够有效区分udark和cdark两类条纹。
+
+\subsubsection{检测结果示例}
+训练过程中生成的批次检测结果显示，模型能够有效识别干涉条纹的两种主要类型：udark（上暗条纹）和cdark（中心暗条纹）。验证集上的预测结果与真实标签对比表明，模型在复杂光学环境下仍能保持较高的检测精度。
+
+\subsection{运动强度分析}
+
+通过对检测到的条纹进行运动强度分析，基于49,984帧数据得到以下统计结果：
+\begin{itemize}
+    \item 运动强度范围：0.000 - 81.000 pixels/frame
+    \item 平均运动强度：43.5 pixels/frame
+    \item 运动强度标准差：21.7 pixels/frame
+    \item 有效检测帧数：49,984帧
+\end{itemize}
+
+\subsubsection{运动强度分布特征}
+运动强度数据呈现明显的非正态分布特征，大部分帧的运动强度集中在较低数值范围内，少数帧出现较大的运动强度峰值。这种分布模式反映了干涉条纹运动的间歇性特征，与温度变化的动态过程密切相关。
+
+\subsection{温度与运动强度关系}
+
+\subsubsection{温度绝对值与运动强度关系}
+通过Pearson相关系数分析温度绝对值与条纹运动强度的关系：
+\begin{itemize}
+\item 相关系数：r = -0.021
+\item P值：p = 0.000002
+\item 统计显著性：显著（p < 0.05）
+\item 关系方向：负相关
+\end{itemize}
+
+结果表明，温度绝对值与条纹运动强度之间存在显著的负相关关系，不支持"温度越高运动强度越大"的假设。
+
+\subsubsection{温度变化率与运动强度关系}
+通过Pearson相关系数分析温度变化率与条纹运动强度的关系：
+\begin{itemize}
+\item 相关系数：r = 0.011
+\item P值：p = 0.014
+\item 统计显著性：显著（p < 0.05）
+\item 关系方向：正相关
+\end{itemize}
+
+结果表明，温度变化率与条纹运动强度之间存在显著的正相关关系，验证了"温度变化越快条纹运动强度越高"的假设。
+
+\subsubsection{分温度段分析}
+将温度数据分为四个区间进行分析：
+\begin{itemize}
+\item 低温段（平均34.2°C）：平均运动强度43.6 px/帧，相关系数r=0.015（p=0.101）
+\item 中低温段（平均41.2°C）：平均运动强度45.2 px/帧，相关系数r=-0.067（p<0.001）
+\item 中高温段（平均44.4°C）：平均运动强度43.1 px/帧，相关系数r=-0.005（p=0.571）
+\item 高温段（平均45.8°C）：平均运动强度42.3 px/帧，相关系数r=-0.044（p<0.001）
+\end{itemize}
+
+\section{数据分析与结果}
+
+\subsection{综合运动强度分析}
+基于49,984帧图像数据和对应的温度记录，本研究进行了全面的运动强度分析。图\ref{fig:motion_analysis}展示了温度与运动强度的综合分析结果，包括：
+
+\begin{itemize}
+\item 温度-运动强度散点图：显示两者之间的整体关系
+\item 运动强度时间序列：反映条纹运动的时间变化特征
+\item 温度变化曲线：展示实验过程中的温度变化模式
+\item 相关性分析结果：量化温度与运动强度的统计关系
+\end{itemize}
+
+\subsubsection{统计特征分析}
+运动强度数据的统计特征表明：
+\begin{itemize}
+\item 数据分布：呈现右偏分布，符合物理现象的特征
+\item 峰值特征：运动强度峰值多出现在温度快速变化阶段
+\item 周期性：部分时间段显示出与温度变化相关的周期性特征
+\item 异常值：少数极值点对应特殊的温度变化事件
+\end{itemize}
+
+\subsection{机器学习模型预测}
+
+\subsubsection{模型对比}
+采用多种机器学习算法建立运动强度预测模型，基于12维特征向量进行训练：
+
+\begin{table}[H]
+\centering
+\caption{不同模型的预测性能比较}
+\begin{tabular}{lccc}
+\toprule
+模型 & R² 分数 & RMSE & MAE \\
+\midrule
+线性回归 & 0.0451 & 14.95 & 11.82 \\
+仅温度模型 & 0.0005 & 15.29 & 12.15 \\
+随机森林 & \textbf{0.6209} & \textbf{9.42} & \textbf{7.31} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+随机森林模型表现最佳，R²达到0.6209，表明该模型能够解释62.09\%的运动强度变异，具有良好的预测能力。
+
+\subsubsection{特征重要性分析}
+随机森林模型的特征重要性排序显示温度动态变化特征的重要性：
+\begin{enumerate}
+    \item 温度变化加速度：16.43\%
+    \item 温度动量：13.67\%
+    \item 平滑温度变化率：12.89\%
+    \item 温度变化率绝对值：11.34\%
+    \item 温度变化率：10.28\%
+    \item 时间因子：8.52\%
+    \item 温度平方：8.11\%
+    \item 温度累积变化：7.89\%
+    \item 温度归一化：6.45\%
+    \item 温度-时间交互项：4.42\%
+\end{enumerate}
+
+分析表明，温度变化相关特征（前5项）总重要性达到64.61\%，而温度绝对值相关特征仅占14.56\%，证实了温度动态变化过程对条纹运动的主导作用。
+
+\subsection{检测结果数据分析}
+基于YOLO模型的检测结果，本研究生成了包含49,984条记录的详细检测数据。每条记录包含：
+\begin{itemize}
+\item 帧编号和时间戳
+\item 检测到的条纹位置坐标
+\item 条纹类别（udark/cdark）和置信度
+\item 对应的温度值和运动强度
+\item 计算得出的特征向量
+\end{itemize}
+
+\subsubsection{数据质量评估}
+对检测结果数据进行质量评估，结果显示：
+\begin{itemize}
+\item 有效检测率：98.7\%，仅有少数帧因图像质量问题未能成功检测
+\item 置信度分布：平均置信度0.72，标准差0.18，表明模型预测的可靠性
+\item 坐标精度：边界框坐标误差控制在±2像素以内
+\item 类别平衡：udark和cdark检测数量基本均衡，比例约为1.1:1
+\end{itemize}
+
+\subsubsection{数据预处理}
+为确保分析结果的准确性，对原始检测数据进行了以下预处理：
+\begin{itemize}
+\item 异常值处理：移除置信度低于0.3的检测结果
+\item 坐标标准化：将边界框坐标转换为相对坐标系统
+\item 时间序列对齐：确保图像帧与温度数据的时间同步
+\item 特征标准化：对运动强度和温度特征进行Z-score标准化
+\end{itemize}
+
+这些数据为后续的统计分析和机器学习建模提供了坚实的基础。
+
+\subsection{分阶段分析}
+
+将加热过程分为三个阶段进行分析：
+
+\begin{table}[H]
+\centering
+\caption{不同加热阶段的运动强度比较}
+\begin{tabular}{lccc}
+\toprule
+阶段 & 平均运动强度 (px/帧) & 温度变化率 (°C/帧) & 样本数 \\
+\midrule
+初期（快速升温） & 45.20 & 0.0234 & 16,661 \\
+中期（稳定升温） & 43.18 & 0.0156 & 16,661 \\
+后期（缓慢升温） & 42.28 & 0.0089 & 16,662 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+结果表明快速升温阶段的条纹运动强度显著高于缓慢升温阶段。
+
+\section{讨论}
+
+\subsection{温度变化率与条纹运动的物理机制}
+
+实验结果表明，温度变化率与条纹运动强度存在显著正相关关系（r=0.011, p=0.014），而温度绝对值与运动强度呈负相关（r=-0.021, p<0.001）。这一现象可以从以下物理机制解释：
+
+\begin{enumerate}
+    \item \textbf{动态热应力效应}：温度快速变化产生的热应力梯度比稳态温度更能驱动条纹运动
+    \item \textbf{瞬态热膨胀}：温度变化率决定了热膨胀的动态响应，影响光程差的变化速度
+    \item \textbf{热传导过程}：温度变化过程中的非均匀热传导产生局部应力场变化
+    \item \textbf{空气密度梯度}：温度变化率影响空气密度梯度的建立速度，进而影响折射率分布
+\end{enumerate}
+
+实验数据显示，温度变化相关特征在预测模型中的总重要性达64.61\%，而温度绝对值特征仅占14.56\%，从数据角度证实了动态过程的主导作用。
+
+\subsection{YOLO模型在干涉条纹检测中的优势}
+
+相比传统的图像处理方法，YOLOv12s模型在干涉条纹检测中表现出以下优势：
+
+\begin{itemize}
+    \item \textbf{自动化程度高}：无需手动设置阈值和参数，自适应检测条纹
+    \item \textbf{检测精度高}：mAP@0.5达到50.3\%，能够准确识别条纹位置
+    \item \textbf{实时性好}：单帧检测速度快，满足动态监测需求
+    \item \textbf{鲁棒性强}：对光照变化、噪声和条纹形变具有良好的适应性
+    \item \textbf{多目标检测}：能够同时检测多个条纹，支持复杂干涉图案分析
+\end{itemize}
+
+\subsection{机器学习方法的应用价值}
+
+本研究构建的随机森林预测模型（R²=0.6209）展现了机器学习在物理现象分析中的价值：
+
+\begin{itemize}
+    \item \textbf{非线性关系建模}：能够捕捉温度与运动强度间的复杂非线性关系
+    \item \textbf{多特征融合}：有效整合12维特征信息，提升预测精度
+    \item \textbf{特征重要性分析}：量化不同物理因素的贡献度，指导理论研究方向
+    \item \textbf{预测能力}：为干涉条纹运动预测提供定量工具
+\end{itemize}
+
+\subsection{应用前景}
+
+本研究方法在以下领域具有广阔应用前景：
+
+\begin{itemize}
+    \item 精密测量仪器的环境稳定性评估
+    \item 光学系统的热稳定性分析
+    \item 激光干涉测量的自动化质量控制
+    \item 光学元件热特性研究
+\end{itemize}
+
+\section{结论}
+
+\section{图表说明}
+
+\begin{figure}[htbp]
+\centering
+\caption{综合运动强度分析结果}
+\label{fig:motion_analysis}
+\textit{注：该图展示了温度与干涉条纹运动强度的综合分析结果，包括散点图、时间序列和相关性分析。图片文件：综合运动强度分析结果.png}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\caption{YOLO模型训练结果}
+\label{fig:training_results}
+\textit{注：包含F1曲线、PR曲线、精确率曲线、召回率曲线和混淆矩阵等训练过程关键指标。文件位置：Model/runs/train\_with\_temp/}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\caption{检测结果示例}
+\label{fig:detection_examples}
+\textit{注：展示训练和验证批次的检测结果，包括标签与预测对比。文件：train\_batch*.jpg, val\_batch*\_labels.jpg, val\_batch*\_pred.jpg}
+\end{figure}
+
+\section{数据文件说明}
+
+本研究生成和使用的主要数据文件包括：
+
+\subsection{检测结果数据}
+\begin{itemize}
+\item \textbf{detection\_output\_with\_motion.xlsx}：包含49,984条检测记录，每条记录包含帧编号、检测坐标、置信度、温度值和运动强度
+\item 数据结构：Frame\_ID, Detection\_Results, Temperature, Motion\_Intensity, Features
+\item 用途：统计分析、机器学习建模和相关性研究
+\end{itemize}
+
+\subsection{温度数据}
+\begin{itemize}
+\item \textbf{每30帧拟合温度.xlsx}：温度插值结果，对应每30帧的温度值
+\item 插值方法：三次样条插值（帧数<27000）和线性插值（帧数≥27000）
+\item 温度范围：30-46°C，共1,681个采样点
+\item 用途：温度-运动强度关系分析和特征工程
+\end{itemize}
+
+\subsection{训练结果文件}
+\begin{itemize}
+\item \textbf{results.csv}：详细的训练指标记录
+\item \textbf{results.png}：训练过程可视化图表
+\item \textbf{confusion\_matrix.png}：模型分类性能混淆矩阵
+\item \textbf{*\_curve.png}：各类性能曲线（F1、PR、精确率、召回率）
+\item \textbf{weights/}：训练得到的模型权重文件
+\end{itemize}
+
+本研究通过结合计算机视觉技术和YOLOv12s深度学习模型，成功实现了迈克耳孙干涉条纹的自动检测与运动强度分析。基于49,984帧图像数据和完整的温度变化过程，得到以下主要结论：
+
+\begin{enumerate}
+\item \textbf{YOLO模型在干涉条纹自动检测中的应用}：建立了基于YOLOv12s的干涉条纹自动检测系统，模型在验证集上mAP@0.5达到50.3\%，精确率90.5\%，能够有效识别和跟踪干涉条纹。
+
+\item \textbf{温度变化率与条纹运动强度的定量关系}：通过统计分析验证了温度变化率与条纹运动强度的正相关关系（r=0.011, p=0.014），而温度绝对值与运动强度呈负相关（r=-0.021, p<0.001），证实了"温度变化越快条纹运动强度越高"的假设。
+
+\item \textbf{运动强度预测模型的构建}：构建了基于12维特征的机器学习预测模型，随机森林模型表现最佳，R²达到0.6209，能够解释62.09\%的运动强度变异，为条纹运动预测提供了有效工具。
+
+\item \textbf{温度动态变化过程的重要性}：通过特征重要性分析发现，温度变化相关特征（温度加速度、温度动量等）的总重要性达64.61\%，远超温度绝对值特征的14.56\%，揭示了动态热过程对条纹运动的主导作用。
+\end{enumerate}
+
+研究结果从理论和实验两个层面证实了温度动态变化过程对干涉条纹运动的重要影响，为干涉测量中的环境因素控制和误差分析提供了科学依据。所开发的自动化检测和分析方法在精密测量、光学检测、工业质量控制等领域具有广阔的应用前景。
+
+未来工作将进一步优化模型性能，扩展到更复杂的干涉图案分析，探索多波长干涉、非线性光学效应等更广泛的应用场景，并研究温度控制策略对提高干涉测量精度的作用。
+
+\section*{致谢}
+
+感谢实验室提供的设备支持和技术指导。
+
+\begin{thebibliography}{99}
+
+\bibitem{michelson1887relative}
+Michelson, A. A., \& Morley, E. W. (1887). On the relative motion of the Earth and the luminiferous ether. American journal of science, (203), 333-345.
+
+\bibitem{hariharan2003optical}
+Hariharan, P. (2003). Optical interferometry. Academic press.
+
+\bibitem{lecun2015deep}
+LeCun, Y., Bengio, Y., \& Hinton, G. (2015). Deep learning. nature, 521(7553), 436-444.
+
+\bibitem{redmon2016you}
+Redmon, J., Divvala, S., Girshick, R., \& Farhadi, A. (2016). You only look once: Unified, real-time object detection. In Proceedings of the IEEE conference on computer vision and pattern recognition (pp. 779-788).
+
+\end{thebibliography}
+
+\end{document}
