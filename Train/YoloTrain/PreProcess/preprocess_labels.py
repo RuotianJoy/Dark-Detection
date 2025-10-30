@@ -10,7 +10,7 @@ def process_labels(dataset_path):
     
     # 处理训练集和验证集
     for split in ['train', 'val']:
-        labels_dir = dataset_path / 'labels' / split
+        labels_dir = dataset_path / 'labels_6' / split
         temp_data[split] = {}
         
         if not labels_dir.exists():
@@ -54,7 +54,7 @@ def process_labels(dataset_path):
         json.dump(temp_data, f, indent=4)
         
     # 备份原始标签目录
-    labels_dir = dataset_path / 'labels'
+    labels_dir = dataset_path / 'labels_6'
     labels_backup = dataset_path / 'labels_original'
     if not labels_backup.exists():
         os.rename(labels_dir, labels_backup)

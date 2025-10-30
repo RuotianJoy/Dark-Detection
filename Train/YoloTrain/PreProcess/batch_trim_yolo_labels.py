@@ -57,7 +57,7 @@ def batch_trim(src_dir: Path, dst_dir: Path) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Batch trim YOLO 6-column labels to 5-column format."
+        description="Batch trim YOLO 6-column labels_6 to 5-column format."
     )
     parser.add_argument("--src", required=True, type=Path,
                         help="含 6 列标签的根目录")

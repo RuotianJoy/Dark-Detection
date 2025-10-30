@@ -7,7 +7,7 @@ def split_dataset(dataset_path, train_ratio=0.8):
     # 转换为绝对路径
     dataset_path = Path(dataset_path).resolve()
     images_path = dataset_path / 'images'
-    labels_path = dataset_path / 'labels'
+    labels_path = dataset_path / 'labels_6'
     
     # 创建所需的目录结构
     for path in [images_path / 'train', images_path / 'val',

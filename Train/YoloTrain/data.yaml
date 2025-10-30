@@ -2,10 +2,10 @@ path: ./dataset  # dataset root dir
 train: images/train  # train images (relative to 'path')
 val: images/val  # val images (relative to 'path')
 
-# Classes
+# Classes (now using 6-column labels_6 with temperature)
 names:
-  0: udark
-  1: cdark
+  0: udark  # Uncomplete Dark Fringes
+  1: cdark  # Complete Dark Fringes
 
 # Number of classes
 nc: 2

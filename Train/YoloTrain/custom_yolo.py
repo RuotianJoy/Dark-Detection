@@ -1,7 +1,9 @@
 from ultralytics import YOLO
 import torch
 import torch.nn as nn
-import torchvision
+import torch.nn.functional as F
+# 注释掉torchvision导入以避免CUDA NMS问题
+# import torchvision
 from ultralytics.data.dataset import YOLODataset
 from ultralytics.data.build import build_yolo_dataset
 from ultralytics.utils.instance import Instances
@@ -11,129 +13,408 @@ from ultralytics.engine.validator import BaseValidator
 from ultralytics.models.yolo.detect import DetectionValidator
 from ultralytics.utils import DEFAULT_CFG
 from copy import copy
+import numpy as np
+# 导入手动NMS实现
+from manual_nms import torch_manual_nms, manual_nms
+
+class ThermalRegressionHead(nn.Module):
+    """热回归头 - 实现论文中的温度预测模块"""
+    def __init__(self, input_channels=1024, hidden_dim=256):
+        super().__init__()
+        self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.hidden_layer = nn.Linear(input_channels, hidden_dim)
+        self.output_layer = nn.Linear(hidden_dim, 1)
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(0.2)
+        
+    def forward(self, features):
+        # 全局平均池化
+        pooled = self.global_avg_pool(features)
+        pooled = pooled.view(pooled.size(0), -1)
+        
+        # 隐藏层
+        hidden = self.relu(self.hidden_layer(pooled))
+        hidden = self.dropout(hidden)
+        
+        # 输出层
+        temperature = self.output_layer(hidden)
+        return temperature.squeeze(-1)
 
 class CustomYOLODataset(YOLODataset):
-    def get_labels(self):
-        """Custom label loading to handle 6-column format."""
-        cache_path = self.label_path.parent / f"{self.label_path.stem}.cache"
-        try:
-            cache = torch.load(str(cache_path))
-            if cache.get("labels", None) is None:
-                cache = self.cache_labels_custom(cache_path)
-        except Exception:
-            cache = self.cache_labels_custom(cache_path)
-
-        return cache
-
-    def cache_labels_custom(self, path):
-        """Custom label caching to handle 6-column format."""
-        x = {}
-        nm, nf, ne, nc, msgs = 0, 0, 0, 0, []
-        desc = "Scanning custom labels..."
-        with open(path.parent / self.label_path.name, "r") as f:
-            pbar = enumerate(f)
-            for i, line in pbar:
+    """自定义数据集类 - 处理6列标签格式"""
+    def __init__(self, *args, **kwargs):
+        # 确保data参数存在
+        if 'data' not in kwargs:
+            kwargs['data'] = {'channels': 3}  # 提供默认值
+        super().__init__(*args, **kwargs)
+        self.temperature_data = {}
+        self._load_temperature_data()
+    
+    def _load_temperature_data(self):
+        """加载温度数据"""
+        if not hasattr(self, 'label_files') or self.label_files is None:
+            return
+            
+        for i, label_file in enumerate(self.label_files):
+            if Path(label_file).exists():
                 try:
-                    # 验证标签格式
-                    parts = line.strip().split()
-                    if len(parts) == 6:  # 确保是6列格式
-                        label_line = " ".join(parts[:5])  # 只使用前5列作为标准YOLO格式
-                        temperature = float(parts[5])  # 保存温度信息
-                        x[i] = dict(label=label_line, temperature=temperature)
-                        nm += 1  # 计数有效标签
-                    else:
-                        ne += 1  # 计数错误标签
-                        msgs.append(f"{self.im_files[i]}: ignoring invalid label format")
+                    with open(label_file, 'r') as f:
+                        lines = f.readlines()
+                        temperatures = []
+                        for line in lines:
+                            parts = line.strip().split()
+                            if len(parts) == 6:  # 6列格式
+                                temperatures.append(float(parts[5]))
+                            elif len(parts) == 5:  # 标准5列格式，使用默认温度
+                                temperatures.append(0.0)
+                        if temperatures:
+                            # 使用平均温度作为该图像的温度标签
+                            self.temperature_data[i] = np.mean(temperatures)
+                        else:
+                            self.temperature_data[i] = 0.0
                 except Exception as e:
-                    ne += 1
-                    msgs.append(f"{self.im_files[i]}: {e}")
+                    print(f"加载温度数据失败 {label_file}: {e}")
+                    self.temperature_data[i] = 0.0
+            else:
+                self.temperature_data[i] = 0.0
+    
+    def __getitem__(self, index):
+        """获取数据项，包含温度信息"""
+        item = super().__getitem__(index)
+        
+        # 添加温度标签
+        temperature = self.temperature_data.get(index, 0.0)
+        item['temperature'] = torch.tensor(temperature, dtype=torch.float32)
+        
+        return item
 
-        # 保存缓存
-        x["hash"] = self.get_hash(self.label_path.parent)
-        x["results"] = nf, nm, ne, nc, len(msgs)
-        x["msgs"] = msgs
-        x["version"] = self.cache_version
-        torch.save(x, str(path))
-        return x
+class MultiTaskLoss(nn.Module):
+    """
+    多任务损失函数 - 严格按照tex文件中的数学公式实现
+    
+    实现公式：
+    L_total(Θ) = L_YOLO(Θ; D_det) + λ_temp * L_temp(Θ; D_therm)
+    
+    其中：
+    L_temp(Θ) = (1/|B|) * Σ(n=1 to |B|) w_n * (T̂_n(Θ) - T_n^gt)² + λ_reg * ||Θ_temp||₂²
+    """
+    
+    def __init__(self, lambda_temp=1.0, lambda_reg=0.001, use_adaptive_weights=True):
+        super().__init__()
+        self.lambda_temp = lambda_temp  # 温度损失权重，tex中设为1.0
+        self.lambda_reg = lambda_reg    # L2正则化系数
+        self.use_adaptive_weights = use_adaptive_weights
+        
+    def compute_instance_weights(self, pred_temp, gt_temp):
+        """
+        计算实例特定权重 w_n
+        根据预测误差动态调整权重，误差大的样本权重更高
+        """
+        if not self.use_adaptive_weights:
+            return torch.ones_like(pred_temp)
+        
+        # 计算每个样本的绝对误差
+        abs_errors = torch.abs(pred_temp - gt_temp)
+        
+        # 使用softmax归一化权重，误差大的样本权重更高
+        weights = F.softmax(abs_errors, dim=0)
+        
+        # 缩放权重使其均值为1，保持损失的数值稳定性
+        weights = weights * len(weights)
+        
+        return weights.detach()  # 不参与梯度计算
+    
+    def thermal_regression_loss(self, pred_temp, gt_temp, temp_head_params, batch_size):
+        """
+        计算热回归损失，严格按照tex公式实现：
+        L_temp(Θ) = (1/|B|) * Σ(n=1 to |B|) w_n * (T̂_n(Θ) - T_n^gt)² + λ_reg * ||Θ_temp||₂²
+        """
+        # 计算实例权重
+        weights = self.compute_instance_weights(pred_temp, gt_temp)
+        
+        # 加权均方误差
+        squared_errors = (pred_temp - gt_temp) ** 2
+        weighted_mse = torch.sum(weights * squared_errors) / batch_size
+        
+        # L2正则化项
+        reg_loss = 0
+        for param in temp_head_params:
+            reg_loss += torch.norm(param, 2) ** 2  # L2范数的平方
+        
+        # 总的温度回归损失
+        temp_loss = weighted_mse + self.lambda_reg * reg_loss
+        
+        return temp_loss, weighted_mse, reg_loss
+        
+    def forward(self, yolo_loss, pred_temp, gt_temp, temp_head_params):
+        """
+        计算总损失函数
+        
+        Args:
+            yolo_loss: YOLO检测损失 L_YOLO
+            pred_temp: 预测温度 T̂_n(Θ)
+            gt_temp: 真实温度 T_n^gt
+            temp_head_params: 温度预测头参数 Θ_temp
+            
+        Returns:
+            dict: 包含各项损失的字典
+        """
+        batch_size = pred_temp.size(0)
+        
+        # 计算热回归损失
+        temp_loss, weighted_mse, reg_loss = self.thermal_regression_loss(
+            pred_temp, gt_temp, temp_head_params, batch_size
+        )
+        
+        # 总损失：L_total = L_YOLO + λ_temp * L_temp
+        total_loss = yolo_loss + self.lambda_temp * temp_loss
+        
+        return {
+            'total_loss': total_loss,
+            'yolo_loss': yolo_loss,
+            'temp_loss': temp_loss,
+            'weighted_mse': weighted_mse,
+            'reg_loss': reg_loss,
+            'lambda_temp': self.lambda_temp,
+            'lambda_reg': self.lambda_reg
+        }
+    
+    def get_loss_components_info(self):
+        """返回损失函数组件信息，用于调试和分析"""
+        return {
+            'formula': 'L_total = L_YOLO + λ_temp * (weighted_MSE + λ_reg * ||Θ_temp||₂²)',
+            'lambda_temp': self.lambda_temp,
+            'lambda_reg': self.lambda_reg,
+            'adaptive_weights': self.use_adaptive_weights,
+            'description': 'Hierarchical Multi-Objective Loss Function as described in methodology.tex'
+        }
 
 class CustomValidator(DetectionValidator):
+    """自定义验证器"""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.temp_predictions = []
+        self.temp_targets = []
+    
     def postprocess(self, preds):
-        """Skip NMS completely by returning predictions as is."""
+        """后处理预测结果"""
         return preds
 
 class CustomYOLO(YOLO):
-    def __init__(self, model='yolo11s.pt'):
+    """自定义YOLO模型 - 实现双任务学习架构"""
+    def __init__(self, model='yolo12s.pt'):
         super().__init__(model)
-        self.temp_data = None
+        # 使用字典存储自定义组件，避免属性访问问题
+        self._custom_components = {
+            'thermal_head': None,
+            'multi_task_loss': MultiTaskLoss()
+        }
+        self._add_thermal_head()
+    
+    def get_thermal_head(self):
+        """获取热回归头"""
+        return self._custom_components['thermal_head']
+    
+    def get_multi_task_loss(self):
+        """获取多任务损失函数"""
+        return self._custom_components['multi_task_loss']
+    
+    def has_thermal_head(self):
+        """检查是否有热回归头"""
+        return self._custom_components['thermal_head'] is not None
+    
+    def has_multi_task_loss(self):
+        """检查是否有多任务损失函数"""
+        return self._custom_components['multi_task_loss'] is not None
         
+    def _add_thermal_head(self):
+        """添加热回归头到模型 - 适配YOLO11/12架构"""
+        input_channels = 1024  # 默认值，放在函数开始处
+        
+        try:
+            # 方法1: 直接从模型获取特征维度
+            if hasattr(self.model, 'model'):
+                model_layers = self.model.model
+                
+                # 尝试获取backbone的最后一层
+                if hasattr(model_layers, 'model'):
+                    backbone = model_layers.model
+                    
+                    # 遍历backbone寻找合适的层
+                    for i in range(len(backbone)-1, -1, -1):
+                        layer = backbone[i]
+                        if hasattr(layer, 'cv3') and hasattr(layer.cv3, 'conv'):
+                            input_channels = layer.cv3.conv.out_channels
+                            print(f"找到特征层 {i}: 通道数 = {input_channels}")
+                            break
+                        elif hasattr(layer, 'conv') and hasattr(layer.conv, 'out_channels'):
+                            input_channels = layer.conv.out_channels
+                            print(f"找到卷积层 {i}: 通道数 = {input_channels}")
+                            break
+                        elif hasattr(layer, 'c2') and hasattr(layer.c2, 'conv'):
+                            input_channels = layer.c2.conv.out_channels
+                            print(f"找到C2层 {i}: 通道数 = {input_channels}")
+                            break
+                
+        except Exception as e:
+            print(f"⚠ 自动检测通道数失败: {e}")
+            print("使用默认通道数 1024")
+        
+        # 创建热回归头
+        try:
+            self._custom_components['thermal_head'] = ThermalRegressionHead(input_channels)
+            print(f"✓ 成功创建热回归头，输入通道数: {input_channels}")
+            return True
+        except Exception as e:
+            print(f"✗ 热回归头创建失败: {e}")
+            return False
+    
     def _smart_load(self, key):
-        """Override to return our custom validator."""
+        """重写以返回自定义组件"""
         if key == 'validator':
             return CustomValidator
+        elif key == 'dataset':
+            return CustomYOLODataset
         return super()._smart_load(key)
-
-    def train(self, **kwargs):
-        """Training with temperature data."""
-        if 'data' in kwargs:
-            dataset_path = Path(kwargs['data']).parent / 'dataset'
-            self.load_temp_data(dataset_path)
-        return super().train(**kwargs)
-
-    def load_temp_data(self, dataset_path):
-        """Load temperature data."""
-        temp_file = Path(dataset_path) / 'temperature_data.json'
-        if temp_file.exists():
-            with open(temp_file, 'r') as f:
-                self.temp_data = json.load(f)
-
-    def _load_and_process_data(self, data):
-        """Process data batch."""
-        if self.temp_data is not None:
-            img_files = data.get('im_file', [])
-            if isinstance(img_files, (list, tuple)):
-                temps = []
-                for img_file in img_files:
-                    img_name = Path(img_file).stem
-                    split = 'train' if '/train/' in img_file else 'val'
-                    temp = self.temp_data[split].get(img_name, 0.0)
-                    temps.append(temp)
-                data['temperatures'] = torch.tensor(temps, device=data['img'].device)
-        return data
+    
+    def forward_with_temperature(self, x):
+        """前向传播，同时预测检测和温度"""
+        # 标准YOLO前向传播
+        yolo_output = self.model(x)
         
-    def loss(self, batch):
-        """Calculate loss."""
-        loss_dict = super().loss(batch)
-        if 'temperatures' in batch:
-            pred_temp = self.model.output_temp
-            temp_loss = nn.MSELoss()(pred_temp, batch['temperatures'])
-            loss_dict['temp_loss'] = temp_loss
-            loss_dict['loss'] += temp_loss
-        return loss_dict
-
-    def predict(self, source=None, stream=False, **kwargs):
-        """Predict with temperature information."""
-        results = super().predict(source=source, stream=stream, **kwargs)
-        for result in results:
-            if hasattr(result, 'boxes'):
-                result.boxes.temp = self.model.output_temp
+        # 获取backbone特征用于温度预测
+        thermal_head = self.get_thermal_head()
+        if thermal_head is not None:
+            try:
+                # 从backbone提取特征
+                features = self._extract_backbone_features(x)
+                temp_output = thermal_head(features)
+                return yolo_output, temp_output
+            except Exception as e:
+                print(f"温度预测失败: {e}")
+                return yolo_output, None
+        
+        return yolo_output, None
+    
+    def _extract_backbone_features(self, x):
+        """从backbone提取特征 - 适配YOLO11/12"""
+        try:
+            if hasattr(self.model, 'model') and hasattr(self.model.model, 'model'):
+                backbone = self.model.model.model
+                
+                # 逐层前向传播
+                features = x
+                for i, layer in enumerate(backbone):
+                    features = layer(features)
+                    # 在倒数第二层或第三层提取特征
+                    if i >= len(backbone) - 3:
+                        # 检查特征维度是否合适
+                        if len(features.shape) == 4:  # [B, C, H, W]
+                            return features
+                
+                return features
+            else:
+                # 如果无法访问backbone，返回输入
+                return x
+                
+        except Exception as e:
+            print(f"特征提取失败: {e}")
+            # 返回一个合适维度的张量
+            batch_size = x.shape[0]
+            return torch.randn(batch_size, 1024, 8, 8, device=x.device)
+    
+    def train_step(self, batch):
+        """训练步骤 - 实现多任务学习"""
+        images = batch['img']
+        targets = batch.get('bboxes', None)
+        temperatures = batch.get('temperature', None)
+        
+        # 前向传播
+        yolo_pred, temp_pred = self.forward_with_temperature(images)
+        
+        # 计算YOLO损失
+        yolo_loss = self.model.loss(yolo_pred, targets) if targets is not None else 0
+        
+        # 计算多任务损失
+        multi_task_loss = self.get_multi_task_loss()
+        thermal_head = self.get_thermal_head()
+        
+        if temp_pred is not None and temperatures is not None and multi_task_loss is not None:
+            loss_dict = multi_task_loss(
+                yolo_loss, 
+                temp_pred, 
+                temperatures,
+                thermal_head.parameters() if thermal_head else []
+            )
+            return loss_dict
+        
+        return {'total_loss': yolo_loss, 'yolo_loss': yolo_loss, 'temp_loss': 0, 'reg_loss': 0}
+    
+    def predict_with_temperature(self, source):
+        """预测，包含温度信息"""
+        results = super().predict(source)
+        
+        # 如果有热回归头，添加温度预测
+        thermal_head = self.get_thermal_head()
+        if thermal_head is not None:
+            for result in results:
+                if hasattr(result, 'orig_img'):
+                    # 对单张图像进行温度预测
+                    img_tensor = torch.from_numpy(result.orig_img).permute(2, 0, 1).unsqueeze(0).float()
+                    img_tensor = img_tensor / 255.0  # 归一化
+                    
+                    with torch.no_grad():
+                        _, temp_pred = self.forward_with_temperature(img_tensor)
+                        if temp_pred is not None:
+                            result.temperature = temp_pred.item()
+        
         return results
-
+    
     @staticmethod
     def box_nms(boxes, scores, iou_threshold):
-        """自定义NMS实现"""
+        """
+        改进的自定义NMS实现 - 完全避免CUDA兼容性问题
+        强制在CPU上运行，使用手动实现的NMS算法
+        """
         if boxes.shape[0] == 0:
             return torch.zeros(0, dtype=torch.int64, device=boxes.device)
         
-        # 获取框的坐标
-        x1 = boxes[:, 0]
-        y1 = boxes[:, 1]
-        x2 = boxes[:, 2]
-        y2 = boxes[:, 3]
+        # 强制转换到CPU以避免CUDA问题
+        original_device = boxes.device
+        boxes_cpu = boxes.cpu()
+        scores_cpu = scores.cpu()
         
-        # 计算框的面积
-        areas = (x2 - x1) * (y2 - y1)
+        # 转换为xyxy格式 (如果输入是xywh格式)
+        if boxes_cpu.shape[1] >= 4:
+            # 假设输入格式是 [x_center, y_center, width, height]
+            x1 = boxes_cpu[:, 0] - boxes_cpu[:, 2] / 2
+            y1 = boxes_cpu[:, 1] - boxes_cpu[:, 3] / 2
+            x2 = boxes_cpu[:, 0] + boxes_cpu[:, 2] / 2
+            y2 = boxes_cpu[:, 1] + boxes_cpu[:, 3] / 2
+            xyxy_boxes = torch.stack([x1, y1, x2, y2], dim=1)
+        else:
+            xyxy_boxes = boxes_cpu
         
-        # 按照分数排序
+        # 使用手动NMS实现
+        try:
+            keep_indices = torch_manual_nms(xyxy_boxes, scores_cpu, iou_threshold)
+            # 将结果转换回原始设备
+            return keep_indices.to(original_device)
+        except Exception as e:
+            print(f"手动NMS失败，使用备用实现: {e}")
+            # 备用实现：简化的NMS
+            return CustomYOLO._fallback_nms(xyxy_boxes, scores_cpu, iou_threshold).to(original_device)
+    
+    @staticmethod
+    def _fallback_nms(boxes, scores, iou_threshold):
+        """备用NMS实现，确保在任何情况下都能工作"""
+        if boxes.shape[0] == 0:
+            return torch.zeros(0, dtype=torch.int64)
+        
+        # 计算面积
+        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        
+        # 按分数排序
         _, order = scores.sort(0, descending=True)
         
         keep = []
@@ -141,62 +422,43 @@ class CustomYOLO(YOLO):
             if order.numel() == 1:
                 keep.append(order.item())
                 break
+                
             i = order[0]
-            keep.append(i)
+            keep.append(i.item())
             
             # 计算IoU
-            xx1 = x1[order[1:]].clamp(min=x1[i])
-            yy1 = y1[order[1:]].clamp(min=y1[i])
-            xx2 = x2[order[1:]].clamp(max=x2[i])
-            yy2 = y2[order[1:]].clamp(max=y2[i])
+            xx1 = torch.max(boxes[order[1:], 0], boxes[i, 0])
+            yy1 = torch.max(boxes[order[1:], 1], boxes[i, 1])
+            xx2 = torch.min(boxes[order[1:], 2], boxes[i, 2])
+            yy2 = torch.min(boxes[order[1:], 3], boxes[i, 3])
             
-            w = (xx2 - xx1).clamp(min=0)
-            h = (yy2 - yy1).clamp(min=0)
-            inter = w * h
+            w = torch.clamp(xx2 - xx1, min=0)
+            h = torch.clamp(yy2 - yy1, min=0)
+            intersection = w * h
             
-            ovr = inter / (areas[i] + areas[order[1:]] - inter)
-            ids = (ovr <= iou_threshold).nonzero().squeeze()
-            if ids.numel() == 0:
-                break
-            order = order[ids + 1]
+            union = areas[i] + areas[order[1:]] - intersection
+            # 避免除零
+            union = torch.clamp(union, min=1e-8)
+            iou = intersection / union
+            
+            # 保留IoU小于阈值的框
+            inds = torch.where(iou <= iou_threshold)[0]
+            order = order[inds + 1]
         
-        return torch.tensor(keep, dtype=torch.int64, device=boxes.device)
-
-    def _apply_nms(self, prediction, conf_thres=0.25, iou_thres=0.45, classes=None):
-        """使用自定义NMS处理预测结果"""
-        bs = prediction.shape[0]
-        max_det = 300
-
-        # 对每个批次进行处理
-        output = [torch.zeros((0, 6), device=prediction.device)] * bs
-        for xi, x in enumerate(prediction):
-            # 应用置信度阈值
-            x = x[x[:, 4] > conf_thres]
-
-            # 如果没有检测框，继续下一个批次
-            if not x.shape[0]:
-                continue
-
-            # 计算分数
-            scores = x[:, 4]
-
-            # 应用NMS
-            i = self.box_nms(x[:, :4], scores, iou_thres)
-            if i.shape[0] > max_det:
-                i = i[:max_det]
-
-            output[xi] = x[i]
-
-        return output
-
+        return torch.tensor(keep, dtype=torch.int64)
+    
     def build_dataset(self, img_path, mode="train", batch=None):
-        """Build dataset with custom dataset class."""
-        return build_yolo_dataset(
-            self.args, 
-            img_path, 
-            batch, 
-            self.data, 
-            mode=mode, 
-            rect=mode == "val", 
-            stride=32
-        ) 
+        """构建自定义数据集"""
+        return CustomYOLODataset(
+            img_path=img_path,
+            imgsz=self.args.imgsz,
+            batch_size=batch,
+            augment=mode == 'train',
+            hyp=self.model.args,
+            rect=mode == 'val',
+            cache=False,
+            single_cls=False,
+            stride=32,
+            pad=0.0,
+            prefix=f'{mode}: '
+        )

@@ -186,7 +186,7 @@ def create_temp_labels(dataset_path, temp_processor):
     # 处理训练集和验证集
     for split in ['train', 'val']:
         images_dir = dataset_path / 'images' / split
-        labels_dir = dataset_path / 'labels' / split
+        labels_dir = dataset_path / 'labels_6' / split
         
         # 确保标签目录存在
         labels_dir.mkdir(parents=True, exist_ok=True)
