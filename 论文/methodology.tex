@@ -1,0 +1,261 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\begin{document}
+
+\title{Methodology for Michelson Interferometer Fringe Motion Analysis using a Custom YOLOv12s Model}
+
+\author{Author Name}
+
+\maketitle
+
+\begin{abstract}
+This paper presents a detailed methodology for analyzing the motion intensity of Michelson interferometer fringes using a novel deep learning approach. We introduce a custom YOLOv12s model capable of not only detecting and tracking interference fringes but also simultaneously predicting the ambient temperature. This multi-task learning framework allows for a comprehensive analysis of the relationship between temperature dynamics and fringe movement. The methodology encompasses data acquisition from a controlled experimental setup, a specialized data preprocessing pipeline including temperature data interpolation, the architecture of our custom YOLOv12s model, a multi-task loss function, and the statistical analysis used to correlate fringe motion with thermal variations.
+\end{abstract}
+
+\textbf{Keywords:} Computer Vision, Deep Learning, YOLO, Michelson Interferometer, Object Detection, Multi-Task Learning, Temperature Prediction.
+
+
+\section{Introduction}
+The study of interference fringe patterns provides critical insights into various physical phenomena. In the context of a Michelson interferometer, the movement of these fringes is highly sensitive to changes in the optical path length, which can be influenced by factors such as temperature. Traditional analysis of these patterns is often manual and time-consuming. This work proposes an automated methodology based on computer vision and deep learning to quantify the motion of interference fringes and analyze its correlation with temperature changes. Our approach leverages a custom-designed YOLOv12s model, which is trained to perform both object detection (fringe localization) and regression (temperature prediction) in a single forward pass.
+
+\section{Methodology}
+
+\subsection{Data Acquisition and Preprocessing}
+
+\subsubsection{Precision Optical Interferometry Setup and Controlled Environmental Conditions}
+The experimental data acquisition was conducted using a high-precision Michelson interferometer configured for spatiotemporal analysis of interference fringe dynamics under controlled thermodynamic perturbations. The optical system architecture comprises the following meticulously calibrated components:
+
+\begin{itemize}
+    \item \textbf{Coherent Light Source:} A stabilized Helium-Neon (He-Ne) laser operating at the fundamental wavelength $\lambda_0 = 632.8$ nm with longitudinal coherence length $L_c > 20$ cm and beam diameter $\phi = 1.2$ mm, ensuring high fringe visibility and temporal stability.
+    
+    \item \textbf{Beam Splitting Assembly:} A precision 50:50 non-polarizing cube beam splitter with transmission-to-reflection ratio $T:R = 0.5 \pm 0.01$, fabricated from N-BK7 optical glass with anti-reflection coatings optimized for the He-Ne wavelength.
+    
+    \item \textbf{Mirror Configuration:} Two ultra-high reflectivity ($R > 99.5\%$) planar mirrors with surface flatness $\lambda/10$ at 632.8 nm. The reference mirror remains stationary, while the measurement mirror is mounted on a computer-controlled piezoelectric translation stage with nanometer-scale positioning accuracy (though maintained in a fixed position during this experimental phase).
+    
+    \item \textbf{Imaging System:} A high-resolution CCD camera (Sony IMX sensor) with $1920 \times 1080$ pixel array, operating at 30 fps with 12-bit dynamic range and quantum efficiency $\eta > 0.6$ at the laser wavelength.
+    
+    \item \textbf{Thermal Control System:} A programmable environmental chamber with PID temperature control, capable of maintaining thermal stability within $\pm 0.1°C$ and providing controlled temperature variations within the operational range $T \in [30°C, 46°C]$.
+\end{itemize}
+
+The optical path difference between the interferometer arms is maintained at approximately $\Delta L \approx \lambda_0/4$ to ensure optimal fringe contrast, while the entire system is isolated from mechanical vibrations using a pneumatic isolation table with resonant frequency $f_0 < 1$ Hz.
+
+\subsubsection{High-Fidelity Dataset Curation and Multi-Modal Annotation Protocol}
+A comprehensive dataset comprising $N = 49,984$ temporally sequential frames was systematically acquired over the experimental duration. To optimize computational efficiency while preserving essential spatial features, each raw frame underwent bilinear interpolation-based downsampling from the native resolution of $1920 \times 1080$ pixels to a standardized resolution of $704 \times 704$ pixels, corresponding to a spatial compression ratio of $\rho = 0.133$.
+
+The dataset curation process employed a rigorous multi-modal annotation protocol, wherein each frame was augmented with both spatial and thermal metadata. Two distinct morphological classes of interference fringes were identified and annotated:
+
+\begin{itemize}
+    \item \textbf{Uncomplete Dark Fringes ($\mathcal{C}_{\text{udark}}$):} Interference minima that are partially formed or incomplete within the fringe pattern, characterized by intensity values $I < I_{\text{threshold}}$ where $I_{\text{threshold}} = 0.3 \cdot I_{\max}$ but exhibiting discontinuous or fragmented spatial structure.
+    
+    \item \textbf{Complete Dark Fringes ($\mathcal{C}_{\text{cdark}}$):} Fully formed interference minima with continuous spatial structure across the pattern, exhibiting similar intensity characteristics but with complete and well-defined morphological boundaries.
+\end{itemize}
+
+Each bounding box annotation $\mathcal{A}_i$ is encoded as a six-dimensional vector:
+\begin{equation}
+\mathcal{A}_i = [c_i, \tilde{x}_i, \tilde{y}_i, \tilde{w}_i, \tilde{h}_i, T_i]^T \in \mathbb{R}^6
+\end{equation}
+where $c_i \in \{0, 1\}$ represents the class identifier, $(\tilde{x}_i, \tilde{y}_i) \in [0,1]^2$ denote the normalized center coordinates, $(\tilde{w}_i, \tilde{h}_i) \in [0,1]^2$ represent the normalized bounding box dimensions, and $T_i \in \mathbb{R}$ corresponds to the instantaneous temperature measurement in Celsius.
+
+The normalization is performed relative to the image dimensions:
+\begin{align}
+\tilde{x}_i &= \frac{x_i}{W}, \quad \tilde{y}_i = \frac{y_i}{H} \\
+\tilde{w}_i &= \frac{w_i}{W}, \quad \tilde{h}_i = \frac{h_i}{H}
+\end{align}
+where $(W, H) = (704, 704)$ represent the standardized image dimensions.
+
+\subsubsection{Adaptive Thermal Field Reconstruction via Piecewise Parametric Interpolation}
+Given the inherently discrete nature of thermal sensor measurements $\mathcal{T} = \{T_{k}, f_k\}_{k=1}^{K}$, where $T_k$ represents the temperature reading at frame index $f_k$, we formulate a sophisticated piecewise parametric interpolation framework to reconstruct a continuous thermal field $\mathcal{T}(f): \mathbb{R}^+ \rightarrow \mathbb{R}$. This adaptive reconstruction methodology is predicated upon the temporal bifurcation of thermal dynamics observed during the experimental protocol.
+
+Let $\Omega_1 = \{f \in \mathbb{N} : f < \tau_{\text{crit}}\}$ and $\Omega_2 = \{f \in \mathbb{N} : f \geq \tau_{\text{crit}}\}$ denote the temporal domains corresponding to the transient and quasi-steady thermal regimes, respectively, where $\tau_{\text{crit}} = 27000$ represents the critical transition frame index.
+
+\begin{itemize}
+    \item \textbf{Cubic Hermite Spline Interpolation ($f \in \Omega_1$):} For the transient thermal regime characterized by non-linear temperature fluctuations, we employ a $C^2$-continuous cubic Hermite spline interpolation. Let $\mathcal{S} = \{S_i(f)\}_{i=1}^{n-1}$ be the collection of cubic polynomial segments, where each $S_i(f)$ is defined over the interval $[f_i, f_{i+1}]$. The spline function is formulated as:
+    \begin{equation}
+    S_i(f) = \sum_{j=0}^{3} \alpha_{i,j} \left(\frac{f - f_i}{f_{i+1} - f_i}\right)^j = \boldsymbol{\alpha}_i^T \boldsymbol{\phi}(\xi_i)
+    \end{equation}
+    where $\xi_i = \frac{f - f_i}{f_{i+1} - f_i} \in [0,1]$ is the normalized local coordinate, $\boldsymbol{\phi}(\xi) = [1, \xi, \xi^2, \xi^3]^T$ is the monomial basis vector, and $\boldsymbol{\alpha}_i = [\alpha_{i,0}, \alpha_{i,1}, \alpha_{i,2}, \alpha_{i,3}]^T$ are the polynomial coefficients determined by the constraint system:
+    \begin{equation}
+    \begin{bmatrix}
+    S_i(f_i) \\ S_i(f_{i+1}) \\ S_i'(f_i) \\ S_i'(f_{i+1})
+    \end{bmatrix} = 
+    \begin{bmatrix}
+    T_i \\ T_{i+1} \\ \dot{T}_i \\ \dot{T}_{i+1}
+    \end{bmatrix}
+    \end{equation}
+    where $\dot{T}_i$ denotes the thermal gradient at node $i$, computed via finite difference approximation.
+
+    \item \textbf{Affine Transformation Model ($f \in \Omega_2$):} For the quasi-steady thermal regime, the temperature field exhibits a monotonic linear trend, which we model using an affine transformation:
+    \begin{equation}
+    \mathcal{T}(f) = \beta_0 + \beta_1 \cdot f + \epsilon(f)
+    \end{equation}
+    where $\beta_0, \beta_1 \in \mathbb{R}$ are the regression parameters estimated via ordinary least squares, and $\epsilon(f) \sim \mathcal{N}(0, \sigma^2)$ represents the residual thermal noise. The empirically determined parameters yield:
+    \begin{equation}
+    \mathcal{T}(f) = 43.80000 + 1.0 \times 10^{-1} \cdot f + \mathcal{O}(\epsilon)
+    \end{equation}
+\end{itemize}
+This hybrid interpolation framework, implemented via the \texttt{scipy.interpolate} computational library, ensures $C^0$-continuity across the temporal bifurcation point while maintaining optimal approximation fidelity within each thermal regime.
+
+\subsection{Dual-Task Neural Architecture with Thermal-Aware Feature Learning}
+Our proposed methodology introduces a novel dual-task neural architecture, designated as YOLOv12s-Thermal, which extends the canonical YOLOv12s framework through the integration of a specialized thermal regression module. This architecture enables simultaneous optimization of object detection and thermal prediction tasks within a unified computational graph.
+
+The network architecture $\mathcal{N}: \mathbb{R}^{H \times W \times C} \rightarrow \mathbb{R}^{N_{\text{det}}} \times \mathbb{R}$ can be decomposed into three principal components:
+
+\begin{enumerate}
+    \item \textbf{Feature Extraction Backbone ($\Phi_{\text{backbone}}$):} A convolutional neural network backbone $\Phi_{\text{backbone}}: \mathbb{R}^{H \times W \times C} \rightarrow \mathbb{R}^{H' \times W' \times D}$ that transforms input images of dimensions $H \times W \times C$ into high-dimensional feature representations of size $H' \times W' \times D$, where $D$ represents the feature dimensionality.
+
+    \item \textbf{Detection Head ($\Phi_{\text{det}}$):} A multi-scale detection module $\Phi_{\text{det}}: \mathbb{R}^{H' \times W' \times D} \rightarrow \mathbb{R}^{N_{\text{det}}}$ that processes the extracted features to generate bounding box predictions, class probabilities, and objectness scores for $N_{\text{det}}$ potential detections.
+
+    \item \textbf{Thermal Regression Head ($\Phi_{\text{therm}}$):} A dedicated regression module $\Phi_{\text{therm}}: \mathbb{R}^{H' \times W' \times D} \rightarrow \mathbb{R}$ that performs global average pooling followed by fully connected layers to predict scalar temperature values.
+\end{enumerate}
+
+The thermal regression head is formulated as:
+\begin{equation}
+\hat{T} = \Phi_{\text{therm}}(\mathbf{F}) = \mathbf{W}_{\text{out}}^T \sigma(\mathbf{W}_{\text{hidden}}^T \text{GAP}(\mathbf{F}) + \mathbf{b}_{\text{hidden}}) + b_{\text{out}}
+\end{equation}
+where $\mathbf{F} \in \mathbb{R}^{H' \times W' \times D}$ represents the feature maps from the backbone, $\text{GAP}(\cdot)$ denotes global average pooling, $\sigma(\cdot)$ is the ReLU activation function, and $\{\mathbf{W}_{\text{hidden}}, \mathbf{W}_{\text{out}}, \mathbf{b}_{\text{hidden}}, b_{\text{out}}\}$ are the learnable parameters of the regression head.
+
+The complete forward pass is expressed as:
+\begin{equation}
+(\mathbf{Y}_{\text{det}}, \hat{T}) = \mathcal{N}(\mathbf{X}) = (\Phi_{\text{det}}(\Phi_{\text{backbone}}(\mathbf{X})), \Phi_{\text{therm}}(\Phi_{\text{backbone}}(\mathbf{X})))
+\end{equation}
+where $\mathbf{X} \in \mathbb{R}^{H \times W \times C}$ is the input image and $\mathbf{Y}_{\text{det}} \in \mathbb{R}^{N_{\text{det}}}$ contains the detection outputs.
+
+This architectural design enables shared feature learning between detection and thermal prediction tasks, promoting the extraction of thermally-relevant visual features that enhance both detection accuracy and temperature estimation precision.
+
+\subsection{Hierarchical Multi-Objective Optimization Framework}
+The network optimization is governed by a sophisticated hierarchical multi-objective loss function, $\mathcal{L}_{\text{total}}: \Theta \rightarrow \mathbb{R}^+$, where $\Theta$ represents the parameter space of the neural network. This composite objective function integrates the canonical YOLOv12s detection losses with a thermal regression component through a weighted linear combination:
+
+\begin{equation}
+\mathcal{L}_{\text{total}}(\Theta) = \mathcal{L}_{\text{YOLO}}(\Theta; \mathcal{D}_{\text{det}}) + \lambda_{\text{temp}} \mathcal{L}_{\text{temp}}(\Theta; \mathcal{D}_{\text{therm}})
+\end{equation}
+
+where $\mathcal{D}_{\text{det}}$ and $\mathcal{D}_{\text{therm}}$ denote the detection and thermal datasets, respectively, and $\lambda_{\text{temp}} \in \mathbb{R}^+$ is a hyperparameter controlling the relative importance of thermal prediction (empirically set to $\lambda_{\text{temp}} = 1.0$).
+
+The YOLO detection loss, $\mathcal{L}_{\text{YOLO}}$, constitutes a multi-component objective function encompassing spatial localization, classification, and objectness prediction:
+
+\begin{equation}
+\mathcal{L}_{\text{YOLO}}(\Theta) = \sum_{i \in \mathcal{G}} \sum_{j=0}^{S^2} \mathbb{I}_{ij}^{\text{obj}} \left[ \lambda_{\text{coord}} \mathcal{L}_{\text{box}}^{(i,j)} + \mathcal{L}_{\text{cls}}^{(i,j)} \right] + \lambda_{\text{noobj}} \sum_{i \in \mathcal{G}} \sum_{j=0}^{S^2} \mathbb{I}_{ij}^{\text{noobj}} \mathcal{L}_{\text{conf}}^{(i,j)}
+\end{equation}
+
+where $\mathcal{G}$ represents the set of ground truth objects, $S^2$ denotes the spatial grid resolution, $\mathbb{I}_{ij}^{\text{obj}}$ and $\mathbb{I}_{ij}^{\text{noobj}}$ are indicator functions for object presence and absence, respectively, and $\{\lambda_{\text{coord}}, \lambda_{\text{noobj}}\}$ are loss weighting coefficients.
+
+The bounding box regression loss $\mathcal{L}_{\text{box}}$ employs a robust $L_1$-$L_2$ hybrid formulation:
+\begin{equation}
+\mathcal{L}_{\text{box}}^{(i,j)} = \sum_{k \in \{x,y,w,h\}} \text{SmoothL1}(\hat{b}_k^{(i,j)} - b_k^{(i,j)})
+\end{equation}
+where $\text{SmoothL1}(x) = \begin{cases} 0.5x^2 & \text{if } |x| < 1 \\ |x| - 0.5 & \text{otherwise} \end{cases}$
+
+The classification loss utilizes focal loss to address class imbalance:
+\begin{equation}
+\mathcal{L}_{\text{cls}}^{(i,j)} = -\alpha_t (1-p_t)^\gamma \log(p_t)
+\end{equation}
+where $p_t$ is the predicted probability for the true class, $\alpha_t$ is the class-specific weighting factor, and $\gamma$ is the focusing parameter.
+
+The thermal regression loss employs a regularized mean squared error with adaptive weighting:
+\begin{equation}
+\mathcal{L}_{\text{temp}}(\Theta) = \frac{1}{|\mathcal{B}|} \sum_{n=1}^{|\mathcal{B}|} w_n \left( \hat{T}_n(\Theta) - T_n^{\text{gt}} \right)^2 + \lambda_{\text{reg}} \|\Theta_{\text{temp}}\|_2^2
+\end{equation}
+where $|\mathcal{B}|$ is the batch size, $w_n$ represents instance-specific weights, $\hat{T}_n$ and $T_n^{\text{gt}}$ are the predicted and ground truth temperatures, respectively, $\Theta_{\text{temp}}$ denotes the thermal prediction head parameters, and $\lambda_{\text{reg}}$ is the $L_2$ regularization coefficient.
+
+\subsection{Optimization Protocol and Hyperparameter Configuration}
+The network training protocol employs a sophisticated optimization strategy designed to achieve convergence across both detection and thermal prediction objectives. The training regimen spans 100 epochs with a mini-batch size of $|\mathcal{B}| = 12$, executed on a single NVIDIA GPU architecture with CUDA acceleration.
+
+\subsubsection{Adaptive Learning Rate Scheduling}
+We employ the AdamW optimizer, which incorporates decoupled weight decay regularization to mitigate overfitting. The learning rate follows a cosine annealing schedule:
+\begin{equation}
+\eta(t) = \eta_{\min} + \frac{1}{2}(\eta_{\max} - \eta_{\min})\left(1 + \cos\left(\frac{t \cdot \pi}{T_{\max}}\right)\right)
+\end{equation}
+where $\eta_{\max} = 10^{-3}$ represents the initial learning rate, $\eta_{\min} = 10^{-4}$ is the minimum learning rate, $t$ denotes the current epoch, and $T_{\max} = 100$ is the total number of training epochs.
+
+\subsubsection{Data Augmentation and Regularization Framework}
+To enhance model generalization and robustness against domain shift, we implement a comprehensive data augmentation pipeline encompassing both geometric and photometric transformations:
+
+\begin{itemize}
+    \item \textbf{Multi-Scale Training:} Random scaling with factors $s \sim \mathcal{U}(0.8, 1.2)$ to improve scale invariance.
+    \item \textbf{Affine Transformations:} Random rotation $\theta \sim \mathcal{U}(-15°, 15°)$, translation $\Delta x, \Delta y \sim \mathcal{U}(-0.1, 0.1)$, and shearing $\phi \sim \mathcal{U}(-2°, 2°)$.
+    \item \textbf{Mosaic Augmentation:} Combination of four training images into a single composite image to enhance small object detection capabilities.
+    \item \textbf{Photometric Perturbations:} Random brightness adjustment $\beta \sim \mathcal{U}(0.8, 1.2)$ and contrast modification $\gamma \sim \mathcal{U}(0.8, 1.2)$.
+\end{itemize}
+
+The augmentation probability for each transformation is set to $p_{\text{aug}} = 0.5$, ensuring balanced exposure to both original and augmented samples during training.
+
+\subsection{Stochastic Modeling of Fringe Dynamics and Thermodynamic Correlation Analysis}
+Following the successful detection and temporal tracking of interference fringes via our custom YOLOv12s architecture, we formulate a comprehensive statistical framework to quantify the spatiotemporal dynamics of fringe motion and establish its correlation with thermal field variations.
+
+Let $\mathbf{M}(t) = [M_x(t), M_y(t)]^T \in \mathbb{R}^2$ denote the instantaneous motion vector field of the interference fringes at temporal index $t$, where $M_x(t)$ and $M_y(t)$ represent the horizontal and vertical displacement components, respectively. The motion intensity is quantified via the $L_2$ norm:
+\begin{equation}
+\mathcal{I}_{\text{motion}}(t) = \|\mathbf{M}(t)\|_2 = \sqrt{M_x^2(t) + M_y^2(t)}
+\end{equation}
+
+We establish a multivariate stochastic model to characterize the relationship between thermal dynamics and fringe motion intensity. Let $\mathcal{T}(t)$ and $\dot{\mathcal{T}}(t) = \frac{d\mathcal{T}}{dt}$ represent the instantaneous temperature and its temporal derivative, respectively. The thermal-motion coupling is modeled via a generalized linear regression framework:
+
+\begin{equation}
+\mathcal{I}_{\text{motion}}(t) = \beta_0 + \beta_1 \mathcal{T}(t) + \beta_2 \dot{\mathcal{T}}(t) + \beta_3 \mathcal{T}^2(t) + \varepsilon(t)
+\end{equation}
+
+where $\{\beta_0, \beta_1, \beta_2, \beta_3\} \in \mathbb{R}$ are regression coefficients and $\varepsilon(t) \sim \mathcal{N}(0, \sigma_\varepsilon^2)$ represents the stochastic residual component.
+
+\subsubsection{Pearson Correlation Analysis}
+We conduct a bivariate correlation analysis to quantify the linear association between thermal variables and motion intensity. The Pearson correlation coefficient is computed as:
+\begin{equation}
+\rho_{XY} = \frac{\text{Cov}(X,Y)}{\sigma_X \sigma_Y} = \frac{E[(X-\mu_X)(Y-\mu_Y)]}{\sqrt{E[(X-\mu_X)^2]E[(Y-\mu_Y)^2]}}
+\end{equation}
+
+Our empirical analysis reveals:
+\begin{itemize}
+    \item \textbf{Thermal Gradient-Motion Coupling:} A statistically significant positive correlation between $\dot{\mathcal{T}}(t)$ and $\mathcal{I}_{\text{motion}}(t)$ with $\rho_{\dot{T},I} = 0.011$ and $p$-value $= 0.014$ (rejecting $H_0: \rho = 0$ at $\alpha = 0.05$).
+    \item \textbf{Absolute Temperature-Motion Relationship:} A negative correlation between $\mathcal{T}(t)$ and $\mathcal{I}_{\text{motion}}(t)$ with $\rho_{T,I} = -0.021$ and $p$-value $< 0.001$.
+\end{itemize}
+
+\subsubsection{Ensemble Learning for Motion Prediction}
+We employ a Random Forest ensemble regressor $\mathcal{F}: \mathbb{R}^d \rightarrow \mathbb{R}$ to predict motion intensity from thermal features. The ensemble model is formulated as:
+\begin{equation}
+\hat{\mathcal{I}}_{\text{motion}} = \mathcal{F}(\mathbf{x}_{\text{therm}}) = \frac{1}{B} \sum_{b=1}^{B} T_b(\mathbf{x}_{\text{therm}})
+\end{equation}
+where $B$ is the number of decision trees, $T_b$ represents the $b$-th tree, and $\mathbf{x}_{\text{therm}} \in \mathbb{R}^d$ is the thermal feature vector encompassing both static and dynamic thermal characteristics.
+
+The model achieves a coefficient of determination $R^2 = 0.6209$, indicating that approximately 62.09\% of the variance in motion intensity is explained by thermal features. Feature importance analysis via permutation-based metrics reveals:
+\begin{equation}
+\mathcal{I}_{\text{feature}}^{(j)} = \frac{1}{B} \sum_{b=1}^{B} \left[ \text{MSE}_b^{(\text{perm},j)} - \text{MSE}_b^{(\text{orig})} \right]
+\end{equation}
+where $\text{MSE}_b^{(\text{perm},j)}$ and $\text{MSE}_b^{(\text{orig})}$ denote the mean squared error of tree $b$ with and without permutation of feature $j$, respectively.
+
+The analysis demonstrates that dynamic thermal features ($\dot{\mathcal{T}}$, $\ddot{\mathcal{T}}$) contribute 64.61\% of the predictive importance, while static thermal features ($\mathcal{T}$) account for 14.56\%, confirming the dominance of thermal transients in driving fringe motion dynamics.
+
+\subsection{Adaptive Non-Maximum Suppression with Geometric Overlap Quantification}
+To optimize the final detection output and eliminate redundant predictions, we implement a sophisticated Non-Maximum Suppression (NMS) algorithm based on geometric overlap quantification. The core metric employed is the Jaccard Index, commonly referred to as Intersection over Union (IoU), which provides a normalized measure of spatial overlap between predicted and ground-truth bounding boxes.
+
+For two arbitrary bounding boxes $\mathcal{B}_p = \{x_p, y_p, w_p, h_p\}$ and $\mathcal{B}_g = \{x_g, y_g, w_g, h_g\}$, where $(x, y)$ denotes the center coordinates and $(w, h)$ represents the width and height, respectively, the IoU metric is formulated as:
+
+\begin{equation}
+\text{IoU}(\mathcal{B}_p, \mathcal{B}_g) = \frac{|\mathcal{A}(\mathcal{B}_p) \cap \mathcal{A}(\mathcal{B}_g)|}{|\mathcal{A}(\mathcal{B}_p) \cup \mathcal{A}(\mathcal{B}_g)|} = \frac{A_{\text{intersection}}}{A_{\text{union}}}
+\end{equation}
+
+where $\mathcal{A}(\mathcal{B})$ denotes the spatial area occupied by bounding box $\mathcal{B}$, and $|\cdot|$ represents the cardinality (area) operator.
+
+The intersection area $A_{\text{intersection}}$ is computed via coordinate geometry:
+\begin{equation}
+A_{\text{intersection}} = \max(0, x_{\text{right}} - x_{\text{left}}) \times \max(0, y_{\text{bottom}} - y_{\text{top}})
+\end{equation}
+where:
+\begin{align}
+x_{\text{left}} &= \max(x_p - w_p/2, x_g - w_g/2) \\
+x_{\text{right}} &= \min(x_p + w_p/2, x_g + w_g/2) \\
+y_{\text{top}} &= \max(y_p - h_p/2, y_g - h_g/2) \\
+y_{\text{bottom}} &= \min(y_p + h_p/2, y_g + h_g/2)
+\end{align}
+
+The union area is subsequently calculated as:
+\begin{equation}
+A_{\text{union}} = A_p + A_g - A_{\text{intersection}} = w_p \cdot h_p + w_g \cdot h_g - A_{\text{intersection}}
+\end{equation}
+
+The NMS algorithm operates by iteratively suppressing detections with IoU values exceeding a predefined threshold $\tau_{\text{IoU}}$, thereby ensuring that each unique interference fringe is represented by a single, optimal bounding box with maximal confidence score. This post-processing step is crucial for maintaining detection precision and eliminating false positive predictions in dense fringe patterns.
+
+\end{document}

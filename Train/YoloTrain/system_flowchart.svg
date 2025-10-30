@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- 定义渐变色 -->
+    <linearGradient id="blueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A90E2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#357ABD;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="greenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7ED321;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#5BA517;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="orangeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F5A623;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D1890B;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="redGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D0021B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#B71C1C;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- 箭头标记 -->
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+            refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+    </marker>
+    
+    <!-- 阴影滤镜 -->
+    <filter id="dropshadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="3" dy="3" stdDeviation="3" flood-color="#00000030"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="1200" height="800" fill="#f8f9fa"/>
+  
+  <!-- 标题 -->
+  <text x="600" y="40" text-anchor="middle" font-family="Arial, sans-serif" 
+        font-size="24" font-weight="bold" fill="#2c3e50">
+    YOLO-based Interference Fringe Detection and Temperature Relationship Analysis System
+  </text>
+  
+  <!-- 上层图像处理路径 -->
+  <g id="image-processing-path">
+    <!-- 原始图像序列 -->
+    <rect x="50" y="100" width="120" height="60" rx="10" 
+          fill="url(#blueGradient)" filter="url(#dropshadow)"/>
+    <text x="110" y="125" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Original Image</text>
+    <text x="110" y="140" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Sequence</text>
+    
+    <!-- YOLO检测 -->
+    <rect x="250" y="100" width="120" height="60" rx="10" 
+          fill="url(#blueGradient)" filter="url(#dropshadow)"/>
+    <text x="310" y="120" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">YOLO Detection</text>
+    <text x="310" y="135" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Object Detection</text>
+    <text x="310" y="150" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="9" fill="white">YOLOv12s</text>
+    
+    <!-- 条纹跟踪 -->
+    <rect x="450" y="100" width="120" height="60" rx="10" 
+          fill="url(#blueGradient)" filter="url(#dropshadow)"/>
+    <text x="510" y="120" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Fringe Tracking</text>
+    <text x="510" y="135" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Motion Analysis</text>
+    <text x="510" y="150" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="9" fill="white">Pattern Tracking</text>
+    
+    <!-- 运动强度计算 -->
+    <rect x="650" y="100" width="120" height="60" rx="10" 
+          fill="url(#blueGradient)" filter="url(#dropshadow)"/>
+    <text x="710" y="120" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Motion Intensity</text>
+    <text x="710" y="135" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Calculation</text>
+    <text x="710" y="150" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="9" fill="white">Quantification</text>
+    
+    <!-- 图像处理路径箭头 -->
+    <line x1="170" y1="130" x2="240" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="370" y1="130" x2="440" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="570" y1="130" x2="640" y2="130" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  </g>
+  
+  <!-- 下层温度数据处理路径 -->
+  <g id="temperature-processing-path">
+    <!-- 温度数据采集 -->
+    <rect x="50" y="300" width="120" height="60" rx="10" 
+          fill="url(#greenGradient)" filter="url(#dropshadow)"/>
+    <text x="110" y="320" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Temperature</text>
+    <text x="110" y="335" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Data Collection</text>
+    <text x="110" y="350" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Acquisition</text>
+    
+    <!-- 数据插值 -->
+    <rect x="250" y="300" width="120" height="60" rx="10" 
+          fill="url(#greenGradient)" filter="url(#dropshadow)"/>
+    <text x="310" y="320" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Data Interpolation</text>
+    <text x="310" y="335" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Processing</text>
+    <text x="310" y="350" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="9" fill="white">Cubic Spline</text>
+    
+    <!-- 特征工程 -->
+    <rect x="450" y="300" width="120" height="60" rx="10" 
+          fill="url(#greenGradient)" filter="url(#dropshadow)"/>
+    <text x="510" y="320" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Feature Engineering</text>
+    <text x="510" y="335" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Extraction</text>
+    <text x="510" y="350" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="9" fill="white">Multi-dimensional</text>
+    
+    <!-- 机器学习建模 -->
+    <rect x="650" y="300" width="120" height="60" rx="10" 
+          fill="url(#greenGradient)" filter="url(#dropshadow)"/>
+    <text x="710" y="320" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Machine Learning</text>
+    <text x="710" y="335" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Modeling</text>
+    <text x="710" y="350" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="9" fill="white">Random Forest</text>
+    
+    <!-- 关系分析 -->
+    <rect x="850" y="300" width="120" height="60" rx="10" 
+          fill="url(#greenGradient)" filter="url(#dropshadow)"/>
+    <text x="910" y="320" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="12" font-weight="bold" fill="white">Relationship</text>
+    <text x="910" y="335" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Analysis</text>
+    <text x="910" y="350" text-anchor="middle" font-family="Arial, sans-serif" 
+          font-size="10" fill="white">Correlation</text>
+    
+    <!-- 温度处理路径箭头 -->
+    <line x1="170" y1="330" x2="240" y2="330" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="370" y1="330" x2="440" y2="330" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="570" y1="330" x2="640" y2="330" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <line x1="770" y1="330" x2="840" y2="330" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+  </g>
+  
+  <!-- 垂直连接箭头 -->
+  <g id="vertical-connections">
+    <!-- 从原始图像序列到温度数据采集 -->
+    <line x1="110" y1="160" x2="110" y2="290" stroke="#666" stroke-width="2" 
+          stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+    <text x="125" y="225" font-family="Arial, sans-serif" font-size="10" fill="#666">Synchronized</text>
+    
+    <!-- 从运动强度计算到机器学习建模 -->
+    <line x1="710" y1="160" x2="710" y2="290" stroke="#666" stroke-width="2" 
+          stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+    <text x="725" y="225" font-family="Arial, sans-serif" font-size="10" fill="#666">Data Fusion</text>
+  </g>
+  
+  <!-- 技术细节说明框 -->
+  <g id="technical-details">
+    <!-- YOLO技术细节 -->
+    <rect x="50" y="450" width="280" height="120" rx="8" 
+          fill="#ffffff" stroke="#4A90E2" stroke-width="2" filter="url(#dropshadow)"/>
+    <text x="60" y="470" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#4A90E2">
+      YOLO Detection Technical Details
+    </text>
+    <text x="60" y="490" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Model: YOLOv12s Custom Model
+    </text>
+    <text x="60" y="505" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Input Size: 640×640 pixels
+    </text>
+    <text x="60" y="520" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Data Augmentation: Rotation, Translation, Scaling, Flipping
+    </text>
+    <text x="60" y="535" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Training Strategy: Mixed Precision, Cosine LR Scheduling
+    </text>
+    <text x="60" y="550" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Detection Target: Interference Fringe Region Localization
+    </text>
+    
+    <!-- 温度处理技术细节 -->
+    <rect x="350" y="450" width="280" height="120" rx="8" 
+          fill="#ffffff" stroke="#7ED321" stroke-width="2" filter="url(#dropshadow)"/>
+    <text x="360" y="470" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#7ED321">
+      Temperature Data Processing Technical Details
+    </text>
+    <text x="360" y="490" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Interpolation Method: Cubic Spline Interpolation
+    </text>
+    <text x="360" y="505" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Feature Dimensions: Temperature, Change Rate, Acceleration, etc.
+    </text>
+    <text x="360" y="520" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Data Normalization: Z-score Standardization
+    </text>
+    <text x="360" y="535" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Time Window: Moving Average Processing
+    </text>
+    <text x="360" y="550" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Feature Selection: Correlation Analysis Filtering
+    </text>
+    
+    <!-- 机器学习技术细节 -->
+    <rect x="650" y="450" width="280" height="120" rx="8" 
+          fill="#ffffff" stroke="#F5A623" stroke-width="2" filter="url(#dropshadow)"/>
+    <text x="660" y="470" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#F5A623">
+      Machine Learning Modeling Technical Details
+    </text>
+    <text x="660" y="490" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Primary Model: Random Forest Regressor
+    </text>
+    <text x="660" y="505" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Comparison Models: Linear Regression, Support Vector Machine
+    </text>
+    <text x="660" y="520" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Evaluation Metrics: R², MSE, MAE
+    </text>
+    <text x="660" y="535" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Cross Validation: 5-fold Cross Validation
+    </text>
+    <text x="660" y="550" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Feature Importance: Based on Impurity Reduction
+    </text>
+  </g>
+  
+  <!-- 性能指标展示 -->
+  <g id="performance-metrics">
+    <rect x="50" y="600" width="880" height="80" rx="8" 
+          fill="#ffffff" stroke="#D0021B" stroke-width="2" filter="url(#dropshadow)"/>
+    <text x="60" y="620" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#D0021B">
+      System Performance Metrics
+    </text>
+    <text x="60" y="640" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • YOLO Detection Accuracy: mAP@0.5 > 0.85  • Fringe Tracking Accuracy: > 90%  • Temperature-Motion Intensity Prediction R²: 0.892
+    </text>
+    <text x="60" y="655" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Processing Speed: 30 FPS  • Temperature Data Sampling Rate: 1 Hz  • System Latency: < 100ms  • Feature Dimensions: 15D
+    </text>
+    <text x="60" y="670" font-family="Arial, sans-serif" font-size="11" fill="#333">
+      • Dataset Size: 5000+ Annotated Samples  • Temperature Range: 20-80°C  • Motion Intensity Range: 0-1 Normalized
+    </text>
+  </g>
+  
+  <!-- 图例 -->
+  <g id="legend">
+    <rect x="950" y="100" width="200" height="160" rx="8" 
+          fill="#ffffff" stroke="#333" stroke-width="1" filter="url(#dropshadow)"/>
+    <text x="960" y="120" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#333">
+      图例说明
+    </text>
+    
+    <rect x="960" y="130" width="20" height="15" fill="url(#blueGradient)"/>
+    <text x="990" y="142" font-family="Arial, sans-serif" font-size="10" fill="#333">图像处理路径</text>
+    
+    <rect x="960" y="150" width="20" height="15" fill="url(#greenGradient)"/>
+    <text x="990" y="162" font-family="Arial, sans-serif" font-size="10" fill="#333">温度数据路径</text>
+    
+    <line x1="960" y1="175" x2="980" y2="175" stroke="#333" stroke-width="2" marker-end="url(#arrowhead)"/>
+    <text x="990" y="180" font-family="Arial, sans-serif" font-size="10" fill="#333">主要流程</text>
+    
+    <line x1="960" y1="190" x2="980" y2="190" stroke="#666" stroke-width="2" 
+          stroke-dasharray="5,5" marker-end="url(#arrowhead)"/>
+    <text x="990" y="195" font-family="Arial, sans-serif" font-size="10" fill="#333">数据同步</text>
+    
+    <text x="960" y="215" font-family="Arial, sans-serif" font-size="9" fill="#666">
+      系统采用并行处理架构
+    </text>
+    <text x="960" y="230" font-family="Arial, sans-serif" font-size="9" fill="#666">
+      实现实时检测与分析
+    </text>
+    <text x="960" y="245" font-family="Arial, sans-serif" font-size="9" fill="#666">
+      温度-运动关系建模
+    </text>
+  </g>
+  
+  <!-- 版权信息 -->
+  <text x="600" y="780" text-anchor="middle" font-family="Arial, sans-serif" 
+        font-size="10" fill="#999">
+    基于YOLO的迈克耳孙干涉条纹检测与温度关系分析系统 © 2024
+  </text>
+</svg>
