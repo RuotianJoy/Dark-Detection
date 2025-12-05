@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.8.17)  31 OCT 2025 03:24
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.8.17)  1 NOV 2025 07:49
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -312,118 +312,143 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 [1
 
 {d:/texlive/2025/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 43.
-
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 43.
-
-Missing character: There is no ° in font cmr10!
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 43.
+Overfull \hbox (3.08397pt too wide) in paragraph at lines 34--35
+[]\OT1/cmr/m/n/10 Industrial qual-ity con-trol rep-re-sents an-other ma-jor ap-pli-ca-tion do-main, where
+ []
 
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 43.
+
+[2]
+Overfull \hbox (2.22276pt too wide) in paragraph at lines 47--48
+[]\OT1/cmr/m/n/10 These ap-pli-ca-tions sug-gest that single-stage de-tec-tors can sat-isfy the through-
+ []
 
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 43.
-
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 43.
-
-Missing character: There is no ° in font cmr10!
-Missing character: There is no ° in font cmr10!
-
-
-[2{d:/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc}]
 
 [3]
 
 [4]
-Overfull \hbox (19.90172pt too wide) in paragraph at lines 112--113
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 80.
+
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 80.
+
+Missing character: There is no ° in font cmr10!
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 80.
+
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 80.
+
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 80.
+
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 80.
+
+Missing character: There is no ° in font cmr10!
+Missing character: There is no ° in font cmr10!
+
+
+[5{d:/texlive/2025/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc}]
+
+[6]
+
+[7]
+Overfull \hbox (19.90172pt too wide) in paragraph at lines 149--150
 []\OT1/cmr/bx/n/10 Detection Head ($\OT1/cmr/m/n/10 ^^H[]$\OT1/cmr/bx/n/10 ): \OT1/cmr/m/n/10 A multi-scale de-tec-tion mod-ule $^^H[] : \U/msb/m/n/10 R[] \OMS/cmsy/m/n/10 !
  []
 
 
-Overfull \hbox (96.75307pt too wide) in paragraph at lines 120--122
+Overfull \hbox (96.75307pt too wide) in paragraph at lines 157--159
 \OT1/cmr/m/n/10 de-notes global av-er-age pool-ing, $\OML/cmm/m/it/10 ^^[\OT1/cmr/m/n/10 (\OMS/cmsy/m/n/10 ^^A\OT1/cmr/m/n/10 )$ is the ReLU ac-ti-va-tion func-tion, and $\OMS/cmsy/m/n/10 f\OT1/cmr/bx/n/10 W[]\OML/cmm/m/it/10 ; \OT1/cmr/bx/n/10 W[]\OML/cmm/m/it/10 ; \OT1/cmr/bx/n/10 b[]\OML/cmm/m/it/10 ; b[]\OMS/cmsy/m/n/10 g$
  []
 
 
-Overfull \hbox (3.19446pt too wide) in paragraph at lines 131--131
+Overfull \hbox (3.19446pt too wide) in paragraph at lines 168--168
 []\OT1/cmr/bx/n/12 Hierarchical Multi-Objective Op-ti-miza-tion Frame-work 
  []
 
 
 
-[5]
+[8]
 
-[6]
+[9]
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
-
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
 
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
 
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
-
-Missing character: There is no ° in font cmr10!
-Missing character: There is no ° in font cmr10!
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
 
 
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
-
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
-
-
-LaTeX Warning: Command \textdegree invalid in math mode on input line 181.
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
 
 Missing character: There is no ° in font cmr10!
 Missing character: There is no ° in font cmr10!
 
-Overfull \hbox (22.9641pt too wide) in paragraph at lines 183--184
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
+
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
+
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
+
+
+LaTeX Warning: Command \textdegree invalid in math mode on input line 218.
+
+Missing character: There is no ° in font cmr10!
+Missing character: There is no ° in font cmr10!
+
+Overfull \hbox (22.9641pt too wide) in paragraph at lines 220--221
 []\OT1/cmr/bx/n/10 Photometric Per-tur-ba-tions: \OT1/cmr/m/n/10 Ran-dom bright-ness ad-just-ment $\OML/cmm/m/it/10 ^^L \OMS/cmsy/m/n/10 ^^X U\OT1/cmr/m/n/10 (0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 8\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 1\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 2)$
  []
 
 
 
-[7]
+[10]
 
-[8]
-Overfull \hbox (18.8378pt too wide) in paragraph at lines 234--235
+[11]
+Overfull \hbox (18.8378pt too wide) in paragraph at lines 271--272
 []\OT1/cmr/m/n/10 For two ar-bi-trary bound-ing boxes $\OMS/cmsy/m/n/10 B[] \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 f\OML/cmm/m/it/10 x[]; y[]; w[]; h[]\OMS/cmsy/m/n/10 g$ \OT1/cmr/m/n/10 and $\OMS/cmsy/m/n/10 B[] \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 f\OML/cmm/m/it/10 x[]; y[]; w[]; h[]\OMS/cmsy/m/n/10 g$\OT1/cmr/m/n/10 ,
  []
 
 
 
-[9] (./methodology.aux)
+[12]
+
+[13]
+Underfull \hbox (badness 1320) in paragraph at lines 334--335
+\OT1/cmr/m/n/10 9). Springer Sci-ence & Busi-ness Me-dia. []$\OT1/cmtt/m/n/10 https : / / doi . org / 10 . 1007 /
+ []
+
+
+
+[14] (./methodology.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `methodology.out' has not changed.
-(rerunfilecheck)             Checksum: 10F9A21674AA79625C0B8FF13528AFD8;4792.
+(rerunfilecheck)             Checksum: 08C3AFF386EAC2E27093623B3467F883;5831.
  ) 
 Here is how much of TeX's memory you used:
- 10445 strings out of 473190
- 156915 string characters out of 5719979
- 565894 words of memory out of 5000000
- 33506 multiletter control sequences out of 15000+600000
- 570259 words of font info for 79 fonts, out of 8000000 for 9000
+ 10507 strings out of 473190
+ 157398 string characters out of 5719979
+ 566401 words of memory out of 5000000
+ 33535 multiletter control sequences out of 15000+600000
+ 570605 words of font info for 80 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,11n,79p,843b,527s stack positions out of 10000i,1000n,20000p,200000b,200000s
-<d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx9.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
-Output written on methodology.pdf (9 pages, 291198 bytes).
+ 75i,11n,79p,959b,562s stack positions out of 10000i,1000n,20000p,200000b,200000s
+<d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx9.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi5.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr17.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy5.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb><d:/texlive/2025/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb>
+Output written on methodology.pdf (14 pages, 334695 bytes).
 PDF statistics:
- 258 PDF objects out of 1000 (max. 8388607)
- 202 compressed objects within 3 object streams
- 55 named destinations out of 1000 (max. 500000)
- 121 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 367 PDF objects out of 1000 (max. 8388607)
+ 303 compressed objects within 4 object streams
+ 87 named destinations out of 1000 (max. 500000)
+ 161 words of extra memory for PDF output out of 10000 (max. 10000000)
 

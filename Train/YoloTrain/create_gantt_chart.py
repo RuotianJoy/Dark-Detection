@@ -54,6 +54,16 @@ def create_gantt_chart():
             ]
         },
         {
+            'task': 'Experiment Iteration',
+            'start': '2025-12-01',
+            'duration': 14,
+            'color': '#8FBC8F',
+            'subtasks': [
+                {'name': 'Hyperparameter Tuning', 'duration': 7},
+                {'name': 'Baseline Training', 'duration': 7}
+            ]
+        },
+        {
             'task': 'Data Annotation',
             'start': '2025-12-06',
             'duration': 25,
@@ -127,24 +137,98 @@ def create_gantt_chart():
     
     # 转换日期格式
     start_date = datetime.strptime('2025-11-01', '%Y-%m-%d')
+    today_date = datetime.strptime('2025-12-01', '%Y-%m-%d')
+    excel_data = {}
+    try:
+        df_actual = pd.read_excel('Project_Timeline_Details.xlsx')
+        name_col = 'phase' if 'phase' in df_actual.columns else 'Phase'
+        s_col = 'Start_date' if 'Start_date' in df_actual.columns else 'start_date'
+        e_col = 'Estimated_End_date' if 'Estimated_End_date' in df_actual.columns else 'estimated_end_date'
+        a_col = None
+        if 'Actual_End_date' in df_actual.columns:
+            a_col = 'Actual_End_date'
+        elif 'actual_end_date' in df_actual.columns:
+            a_col = 'actual_end_date'
+        d_col = 'duration' if 'duration' in df_actual.columns else None
+        st_col = 'status' if 'status' in df_actual.columns else None
+        for _, row in df_actual.iterrows():
+            name = str(row.get(name_col, '')).strip()
+            if not name:
+                continue
+            excel_data[name] = {
+                'start': str(row.get(s_col, '')).strip(),
+                'estimated_end': str(row.get(e_col, '')).strip(),
+                'actual_end': str(row.get(a_col, '')).strip() if a_col else '',
+                'duration': int(row.get(d_col)) if d_col and pd.notnull(row.get(d_col)) else None,
+                'status': str(row.get(st_col, '')).strip() if st_col else ''
+            }
+    except Exception:
+        excel_data = {}
     
     # 绘制甘特图
     y_pos = np.arange(len(tasks))
     
     for i, task in enumerate(tasks):
-        task_start = datetime.strptime(task['start'], '%Y-%m-%d')
-        task_end = task_start + timedelta(days=task['duration'])
+        ed = excel_data.get(task['task'])
+        start_str = ed['start'] if ed and ed.get('start') else task['start']
+        if '/' in start_str:
+            task_start = datetime.strptime(start_str, '%Y/%m/%d')
+        else:
+            task_start = datetime.strptime(start_str, '%Y-%m-%d')
+        planned_duration = ed['duration'] if ed and ed.get('duration') else task['duration']
+        task_end = task_start + timedelta(days=planned_duration)
         
-        # 绘制主任务条
-        ax.barh(i, task['duration'], left=(task_start - start_date).days, 
-                height=0.7, color=task['color'], alpha=0.8, 
+        ax.barh(i, planned_duration, left=(task_start - start_date).days, 
+                height=0.7, color=task['color'], alpha=0.3, 
                 edgecolor='black', linewidth=0.5)
         
-        # 添加任务名称
-        ax.text((task_start - start_date).days + task['duration']/2, i, 
-                f"{task['task']}\n({task['duration']} days)", 
+        completed_days = max(0, min((today_date - task_start).days, planned_duration))
+        if completed_days > 0:
+            ax.barh(i, completed_days, left=(task_start - start_date).days,
+                    height=0.7, color=task['color'], alpha=0.9,
+                    edgecolor='black', linewidth=0.5)
+        
+        ax.text((task_start - start_date).days + planned_duration/2, i, 
+                f"{task['task']}\n({planned_duration} days)", 
                 ha='center', va='center', fontsize=8, fontweight='bold',
                 bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+
+        if ed and ed.get('status'):
+            s_text = ed.get('status')
+            if s_text.lower() in ['completed', '已完成']:
+                status_text = 'Completed'
+                status_color = '#2E7D32'
+            elif s_text.lower() in ['in progress', '进行中']:
+                status_text = 'In progress'
+                status_color = '#FB8C00'
+            else:
+                status_text = 'Unfinished'
+                status_color = '#757575'
+        else:
+            if today_date >= task_end:
+                status_text = 'Completed'
+                status_color = '#2E7D32'
+            elif today_date < task_start:
+                status_text = 'Not started'
+                status_color = '#757575'
+            else:
+                status_text = 'In progress'
+                status_color = '#FB8C00'
+        status_x = (task_start - start_date).days + planned_duration - 0.5
+        ax.text(status_x, i, status_text, ha='right', va='center', fontsize=8, color=status_color, fontweight='bold')
+
+        actual_str = ed.get('actual_end') if ed else None
+        if actual_str:
+            try:
+                if '/' in actual_str:
+                    actual_date = datetime.strptime(actual_str, '%Y/%m/%d')
+                else:
+                    actual_date = datetime.strptime(actual_str, '%Y-%m-%d')
+                actual_duration = max(0, (actual_date - task_start).days)
+                ax.barh(i-0.18, actual_duration, left=(task_start - start_date).days,
+                        height=0.35, color='none', edgecolor='black', linewidth=1.2, hatch='////')
+            except Exception:
+                pass
     
     # 设置y轴
     ax.set_yticks(y_pos)
@@ -190,12 +274,17 @@ def create_gantt_chart():
         ax.text(milestone_pos, len(tasks), milestone['name'], 
                rotation=90, ha='right', va='bottom', 
                color=milestone['color'], fontweight='bold', fontsize=9)
+
+    today_pos = (today_date - start_date).days
+    ax.axvline(x=today_pos, color='black', linestyle='--', linewidth=1.5, alpha=0.8)
+    ax.text(today_pos, len(tasks), 'Today', rotation=90, ha='right', va='bottom', color='black', fontweight='bold', fontsize=9)
     
     # 添加图例
     legend_elements = []
     for task in tasks:
         legend_elements.append(plt.Rectangle((0,0),1,1, facecolor=task['color'], 
                                            alpha=0.8, label=task['task']))
+    legend_elements.append(plt.Rectangle((0,0),1,1, facecolor='white', edgecolor='black', hatch='////', label='Actual completion'))
     
     ax.legend(handles=legend_elements, loc='center left', bbox_to_anchor=(1, 0.5),
              fontsize=9, title='Project Phases', title_fontsize=10)
@@ -209,93 +298,95 @@ def create_detailed_timeline():
     """创建详细的项目时间线表"""
     
     tasks_data = []
+    today_date = datetime.strptime('2025-12-01', '%Y-%m-%d')
     
-    # 项目阶段详细信息
-    project_phases = [
+    base = [
         {
             'phase': 'Project Preparation',
             'start_date': '2025-11-01',
-            'end_date': '2025-11-14',
-            'duration': 14,
-            'deliverables': 'Literature Review, Experimental Design, Equipment List',
-            'resources': '1 Researcher',
-            'status': 'Planned'
+            'estimated_end_date': '2025-11-14',
+            'deliverables': 'Literature Review, Experimental Design, Equipment List'
         },
         {
             'phase': 'Data Collection',
             'start_date': '2025-11-15',
-            'end_date': '2025-11-21',
-            'duration': 7,
-            'deliverables': '49,984 Image Frames, Temperature Data',
-            'resources': '1 Researcher',
-            'status': 'Planned'
+            'estimated_end_date': '2025-11-21',
+            'deliverables': '49,984 Image Frames, Temperature Data'
         },
         {
             'phase': 'Data Preprocessing',
             'start_date': '2025-11-22',
-            'end_date': '2025-12-05',
-            'duration': 14,
-            'deliverables': 'Preprocessed Images, Interpolated Temperature Data',
-            'resources': '1 Researcher',
-            'status': 'Planned'
+            'estimated_end_date': '2025-12-05',
+            'deliverables': 'Preprocessed Images, Interpolated Temperature Data'
+        },
+        {
+            'phase': 'Experiment Iteration',
+            'start_date': '2025-12-01',
+            'estimated_end_date': '2025-12-14',
+            'deliverables': 'Experiment logs, preliminary results'
         },
         {
             'phase': 'Data Annotation',
             'start_date': '2025-12-06',
-            'end_date': '2025-12-30',
-            'duration': 25,
-            'deliverables': 'Annotated Dataset (158 Training, 333 Validation)',
-            'resources': '2 Researchers',
-            'status': 'Planned'
+            'estimated_end_date': '2025-12-30',
+            'deliverables': 'Annotated Dataset (158 Training, 333 Validation)'
         },
         {
             'phase': 'YOLO Model Development',
             'start_date': '2025-12-31',
-            'end_date': '2026-01-24',
-            'duration': 25,
-            'deliverables': 'Trained YOLOv12s Model',
-            'resources': '1 Researcher, GPU Server',
-            'status': 'Planned'
+            'estimated_end_date': '2026-01-24',
+            'deliverables': 'Trained YOLOv12s Model'
         },
         {
             'phase': 'Model Validation & Testing',
             'start_date': '2026-01-25',
-            'end_date': '2026-02-05',
-            'duration': 12,
-            'deliverables': 'Performance Report, Detection Results',
-            'resources': '1 Researcher',
-            'status': 'Planned'
+            'estimated_end_date': '2026-02-05',
+            'deliverables': 'Performance Report, Detection Results'
         },
         {
             'phase': 'Motion Intensity Analysis',
             'start_date': '2026-02-06',
-            'end_date': '2026-02-21',
-            'duration': 16,
-            'deliverables': 'Motion Analysis Results, Prediction Model',
-            'resources': '1 Researcher',
-            'status': 'Planned'
+            'estimated_end_date': '2026-02-21',
+            'deliverables': 'Motion Analysis Results, Prediction Model'
         },
         {
             'phase': 'Result Analysis & Visualization',
             'start_date': '2026-02-22',
-            'end_date': '2026-03-03',
-            'duration': 10,
-            'deliverables': 'Analysis Report, Visualization Charts',
-            'resources': '1 Researcher',
-            'status': 'Planned'
+            'estimated_end_date': '2026-03-03',
+            'deliverables': 'Analysis Report, Visualization Charts'
         },
         {
             'phase': 'Paper Writing',
             'start_date': '2026-03-04',
-            'end_date': '2026-03-23',
-            'duration': 20,
-            'deliverables': 'Academic Paper',
-            'resources': '1 Researcher',
-            'status': 'Planned'
+            'estimated_end_date': '2026-03-23',
+            'deliverables': 'Academic Paper'
         }
     ]
     
-    return project_phases
+    for item in base:
+        s = datetime.strptime(item['start_date'], '%Y-%m-%d')
+        e = datetime.strptime(item['estimated_end_date'], '%Y-%m-%d')
+        duration = (e - s).days
+        if today_date >= e:
+            status = 'Completed'
+            actual_end_date = e.strftime('%Y-%m-%d')
+        elif s <= today_date < e:
+            status = 'In progress'
+            actual_end_date = ''
+        else:
+            status = 'Unfinished'
+            actual_end_date = ''
+        tasks_data.append({
+            'phase': item['phase'],
+            'start_date': item['start_date'],
+            'estimated_end_date': item['estimated_end_date'],
+            'actual_end_date': actual_end_date,
+            'duration': duration,
+            'deliverables': item['deliverables'],
+            'status': status
+        })
+    
+    return tasks_data
 
 if __name__ == "__main__":
     # 创建甘特图
@@ -314,7 +405,10 @@ if __name__ == "__main__":
     
     # 保存为Excel文件
     df = pd.DataFrame(timeline)
-    df.to_excel('Project_Timeline_Details.xlsx', index=False, engine='openpyxl')
+    try:
+        df.to_excel('Project_Timeline_Details.xlsx', index=False, engine='openpyxl')
+    except Exception:
+        df.to_csv('Project_Timeline_Details.csv', index=False, encoding='utf-8-sig')
     
     print("Project timeline details saved as 'Project_Timeline_Details.xlsx'")
     
