@@ -245,44 +245,15 @@ class CustomYOLO(YOLO):
         return self._custom_components['multi_task_loss'] is not None
         
     def _add_thermal_head(self):
-        """添加热回归头到模型 - 适配YOLO11/12架构"""
-        input_channels = 1024  # 默认值，放在函数开始处
-        
-        try:
-            if hasattr(self.model, 'model'):
-                layers = getattr(self.model, 'model')
-                backbone = layers
-                length = len(backbone) if hasattr(backbone, '__len__') else 0
-                for i in range(length-1, -1, -1):
-                    layer = backbone[i]
-                    if hasattr(layer, 'cv3') and hasattr(layer.cv3, 'conv'):
-                        input_channels = layer.cv3.conv.out_channels
-                        self._feature_layer = layer
-                        print(f"找到特征层 {i}: 通道数 = {input_channels}")
-                        break
-                    elif hasattr(layer, 'conv') and hasattr(layer.conv, 'out_channels'):
-                        input_channels = layer.conv.out_channels
-                        self._feature_layer = layer
-                        print(f"找到卷积层 {i}: 通道数 = {input_channels}")
-                        break
-                    elif hasattr(layer, 'c2') and hasattr(layer.c2, 'conv'):
-                        input_channels = layer.c2.conv.out_channels
-                        self._feature_layer = layer
-                        print(f"找到C2层 {i}: 通道数 = {input_channels}")
-                        break
-                if self._feature_layer is not None:
-                    self._register_feature_hook(self._feature_layer)
-        
-        except Exception as e:
-            print(f"⚠ 自动检测通道数失败: {e}")
-            print("使用默认通道数 1024")
+        """添加热回归头到模型 - 使用默认通道并在首次前向动态适配"""
+        input_channels = 1024
         
         # 创建热回归头
         try:
             self._custom_components['thermal_head'] = ThermalRegressionHead(input_channels)
             device = next(self.model.parameters()).device
             self._custom_components['thermal_head'].to(device)
-            print(f"✓ 成功创建热回归头，输入通道数: {input_channels}")
+            print(f"✓ 成功创建热回归头，输入通道数: {input_channels} (动态适配)")
             return True
         except Exception as e:
             print(f"✗ 热回归头创建失败: {e}")
