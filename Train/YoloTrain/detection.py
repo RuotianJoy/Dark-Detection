@@ -167,7 +167,7 @@ def video_detection_with_dual_task(video_path, model_path):
     print(f"温度预测功能: {'启用' if has_thermal_head else '禁用'}")
 
     # 读取温度表作为对比
-    temp_file = "D:\\Dark-Detection\\DataProcess\\temperature\\每30帧拟合温度.xlsx"
+    temp_file = "..\\..\\DataProcess\\temperature\\每30帧拟合温度.xlsx"
     if Path(temp_file).exists():
         df_temp = pd.read_excel(temp_file)
         frames = df_temp["帧编号"].values
@@ -376,10 +376,7 @@ def video_detection_with_dual_task(video_path, model_path):
         cv2.putText(annotated_frame, motion_text,
                     (10, 60), cv2.FONT_HERSHEY_SIMPLEX,
                     0.7, (0,255,0), 2, cv2.LINE_AA)
-
-        cv2.imshow("Dual-Task YOLOv12s Detection", annotated_frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # 无窗口展示模式：跳过 imshow/waitKey
 
         # 收集本帧数据
         record = {
@@ -396,7 +393,6 @@ def video_detection_with_dual_task(video_path, model_path):
         frame_id += 1
 
     cap.release()
-    cv2.destroyAllWindows()
     
     # 生成运动分析报告
     generate_motion_analysis_report(records, stripe_history)
@@ -462,7 +458,7 @@ def test_dual_task_detection():
             return
     
     # 执行双任务检测
-    video_path = "D:\\Dark-Detection\\Vedio\\Processed2.mp4"
+    video_path = "..\\..\\Vedio\\Processed2.mp4"
     records, stripe_history, motion_intensities, temperatures = video_detection_with_dual_task(
         video_path, model_path
     )
@@ -605,7 +601,7 @@ def video_detection(video_path, model_path):
     model.iou = 0.7
 
     # 读取温度表
-    df_temp = pd.read_excel("D:\\Dark-Detection\\DataProcess\\temperature\\每30帧拟合温度.xlsx")
+    df_temp = pd.read_excel("..\\..\\DataProcess\\temperature\\每30帧拟合温度.xlsx")
     frames = df_temp["帧编号"].values
     temps = df_temp["拟合温度"].values
 
@@ -682,9 +678,7 @@ def video_detection(video_path, model_path):
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
                     1, (255,255,255), 2, cv2.LINE_AA)
 
-        cv2.imshow("YOLOv8 Detection", annotated_frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        # 无窗口展示模式
 
         # 收集本帧数据
         records.append({
@@ -698,7 +692,6 @@ def video_detection(video_path, model_path):
         frame_id += 1
 
     cap.release()
-    cv2.destroyAllWindows()
     
     # 生成运动分析报告
     generate_motion_analysis_report(records, stripe_history)
@@ -725,8 +718,8 @@ def test_motion_analysis():
     
     # 执行检测和运动分析
     records, stripe_history = video_detection(
-        "D:\\Dark-Detection\\Vedio\\Processed2.mp4", 
-        "D:\\Dark-Detection\\Train\\YoloTrain\\Model\\runs\\train_with_temp\\weights\\best.pt"
+        "..\\..\\Vedio\\Processed2.mp4",
+        "..\\..\\Train\\YoloTrain\\Model\\runs\\train_with_temp\\weights\\best.pt"
     )
     
     print("\n=== 测试完成 ===")
@@ -746,5 +739,5 @@ if __name__ == "__main__":
     test_motion_analysis()
     
     # 如果要检测视频文件，可以传入视频路径
-    # video_detection("D:\\Dark-Detection\\Vedio\\Processed2.mp4", "D:\\Dark-Detection\\Train\\YoloTrain\\Model\\runs\\train_with_temp\\weights\\best.pt")
+    # video_detection("..\\..\\Vedio\\Processed2.mp4", "..\\..\\Train\\YoloTrain\\Model\\runs\\train_with_temp\\weights\\best.pt")
 
