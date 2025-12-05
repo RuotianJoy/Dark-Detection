@@ -3,6 +3,19 @@ from custom_yolo import CustomYOLO
 from ultralytics import YOLO
 import torch
 from manual_nms import torch_manual_nms
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+
+def join_here(p):
+    return str((BASE_DIR / Path(str(p).replace('\\','/'))).resolve())
+
+def find_existing(candidates):
+    for c in candidates:
+        p = (BASE_DIR / Path(str(c).replace('\\','/'))).resolve()
+        if p.exists():
+            return str(p)
+    return None
 from statistical_analysis import FringeMotionAnalyzer
 import math
 from collections import defaultdict
@@ -167,8 +180,12 @@ def video_detection_with_dual_task(video_path, model_path):
     print(f"温度预测功能: {'启用' if has_thermal_head else '禁用'}")
 
     # 读取温度表作为对比
-    temp_file = "..\\..\\DataProcess\\temperature\\每30帧拟合温度.xlsx"
-    if Path(temp_file).exists():
+    temp_candidates = [
+        'DataProcess/temperature/每30帧拟合温度.xlsx',
+        '../../DataProcess/temperature/每30帧拟合温度.xlsx'
+    ]
+    temp_file = find_existing(temp_candidates)
+    if temp_file is not None:
         df_temp = pd.read_excel(temp_file)
         frames = df_temp["帧编号"].values
         temps = df_temp["拟合温度"].values
@@ -453,7 +470,7 @@ def test_dual_task_detection():
         'Model/runs/train_with_temp/weights/best.pt',
         '../../Train/YoloTrain/Model/runs/train_with_temp/weights/best.pt',
     ]
-    base = Path(__file__).resolve().parents[2]
+    base = BASE_DIR
     model_path = None
     for c in candidates:
         p = (base / Path(str(c).replace('\\','/'))).resolve()
@@ -621,7 +638,7 @@ def video_detection(video_path, model_path):
         'DataProcess/temperature/每30帧拟合温度.xlsx',
         '../../DataProcess/temperature/每30帧拟合温度.xlsx'
     ]
-    base = Path(__file__).resolve().parents[2]
+    base = BASE_DIR
     temp_path = None
     for c in temp_path_candidates:
         p = (base / Path(str(c).replace('\\','/'))).resolve()
