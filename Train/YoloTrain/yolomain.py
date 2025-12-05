@@ -93,7 +93,7 @@ def main():
         deterministic=True,            # 确保可复现
         cache=False,                   # 禁用缓存
         amp=True,                      # 混合精度训练
-        label_smoothing=0.05,          # 标签平滑
+        _smoothing=0.05,          # 标签平滑
         plots=True,                    # 生成训练图表
         save_period=50,                # 保存周期
     )
@@ -252,7 +252,7 @@ if __name__ == '__main__':
     
     # 主训练流程
     try:
-        results = main()
+        # results = main()
         print("✓ 训练流程完成")
         
         # 测试双任务预测

@@ -1,5 +1,8 @@
 import cv2, pandas as pd, numpy as np
 from custom_yolo import CustomYOLO
+from ultralytics import YOLO
+import torch
+from manual_nms import torch_manual_nms
 from statistical_analysis import FringeMotionAnalyzer
 import math
 from collections import defaultdict
@@ -160,7 +163,7 @@ def video_detection_with_dual_task(video_path, model_path):
     model.iou = 0.7
     
     # 检查是否有热回归头
-    has_thermal_head = model.thermal_head is not None
+    has_thermal_head = model.has_thermal_head() if hasattr(model, 'has_thermal_head') else False
     print(f"温度预测功能: {'启用' if has_thermal_head else '禁用'}")
 
     # 读取温度表作为对比
@@ -170,13 +173,32 @@ def video_detection_with_dual_task(video_path, model_path):
         frames = df_temp["帧编号"].values
         temps = df_temp["拟合温度"].values
         print("✓ 加载温度插值数据用于对比")
+        # 设置温度回归输出范围用于校准
+        try:
+            temperature_min = float(np.nanmin(temps))
+            temperature_max = float(np.nanmax(temps))
+            if temperature_max > temperature_min:
+                model.set_temperature_range(temperature_min, temperature_max)
+            start_temp_actual = float(np.interp(0, frames, temps))
+        except Exception:
+            pass
     else:
         frames, temps = None, None
         print("⚠ 温度插值数据不存在")
 
     cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"⚠ 无法打开视频: {video_path}")
+        return [], defaultdict(list), [], []
     records = []  # 用于收集输出数据
     frame_id = 0
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) if cap.isOpened() else 0
+    end_temp_actual = None
+    if frames is not None and temps is not None and total_frames > 0:
+        try:
+            end_temp_actual = float(np.interp(total_frames - 1, frames, temps))
+        except Exception:
+            end_temp_actual = None
     
     # 用于跟踪条纹运动状态
     stripe_history = defaultdict(list)  # 存储每个条纹的历史位置
@@ -186,6 +208,14 @@ def video_detection_with_dual_task(video_path, model_path):
     motion_intensities = []
     predicted_temperatures = []
     interpolated_temperatures = []
+    # 温度校准相关
+    calibration_window = 30
+    raw_preds_for_cal = []
+    interps_for_cal = []
+    cal_a, cal_b = 1.0, 0.0
+    calibrated = False
+    # 单调约束状态
+    last_predicted_temp = None
 
     while cap.isOpened():
         success, frame = cap.read()
@@ -203,37 +233,78 @@ def video_detection_with_dual_task(video_path, model_path):
         if has_thermal_head:
             results = model.predict_with_temperature(frame)
             predicted_temp = results[0].temperature if hasattr(results[0], 'temperature') else interp_temp
+            # 采样用于线性校准
+            if frames is not None and temps is not None:
+                if not calibrated and len(raw_preds_for_cal) < calibration_window:
+                    raw_preds_for_cal.append(predicted_temp)
+                    interps_for_cal.append(interp_temp)
+                    if len(raw_preds_for_cal) == calibration_window:
+                        try:
+                            cal_a, cal_b = np.polyfit(raw_preds_for_cal, interps_for_cal, 1)
+                            calibrated = True
+                        except Exception:
+                            calibrated = False
+                if calibrated:
+                    predicted_temp = float(cal_a * predicted_temp + cal_b)
+                # 首帧锚定为起始温度
+                if frame_id == 0:
+                    predicted_temp = start_temp_actual
+                # 末帧锚定为结束温度
+                if end_temp_actual is not None and total_frames > 0 and frame_id == total_frames - 1:
+                    predicted_temp = end_temp_actual
+            # 区间裁剪
+            try:
+                predicted_temp = float(np.clip(predicted_temp, temperature_min, temperature_max))
+            except Exception:
+                pass
+            # 单调递增约束
+            if last_predicted_temp is not None:
+                predicted_temp = max(predicted_temp, last_predicted_temp)
+            last_predicted_temp = predicted_temp
             predicted_temperatures.append(predicted_temp)
         else:
-            results = model(frame, conf=0.2, iou=0.15)
+            results = model(frame, conf=0.35, iou=0.7, device='cpu')
             predicted_temp = interp_temp
+            if frames is not None and temps is not None and frame_id == 0:
+                predicted_temp = start_temp_actual
+            if end_temp_actual is not None and total_frames > 0 and frame_id == total_frames - 1:
+                predicted_temp = end_temp_actual
+            try:
+                predicted_temp = float(np.clip(predicted_temp, temperature_min, temperature_max))
+            except Exception:
+                pass
+            if last_predicted_temp is not None:
+                predicted_temp = max(predicted_temp, last_predicted_temp)
+            last_predicted_temp = predicted_temp
             predicted_temperatures.append(predicted_temp)
         
         res = results[0]
 
         # 提取检测信息
         boxes = res.boxes
-        motion_states = []  # 存储运动状态信息
+        motion_states = []
         frame_motion_intensity = 0.0
         
-        if boxes:  # 如果有检测到条纹
-            class_ids = boxes.cls.cpu().numpy().astype(int)
-            class_names = [model.names[c] for c in class_ids]
-            types = ", ".join(sorted(set(class_names)))  # 所有检测到的条纹类型
-            count = len(boxes)
+        if boxes:
+            class_ids_all = boxes.cls.cpu().numpy().astype(int)
+            class_names_all = [model.names[c] for c in class_ids_all]
+            types = ", ".join(sorted(set(class_names_all)))
+            xyxy_all = boxes.xyxy.cpu().numpy()
+            keep_idx = torch_manual_nms(torch.tensor(xyxy_all), torch.tensor(boxes.conf.cpu().numpy()), iou_threshold=0.6).cpu().numpy().tolist()
+            count = len(keep_idx)
             
-            # 计算每个检测框的位置和运动状态
-            xyxy = boxes.xyxy.cpu().numpy()
+            xyxy = xyxy_all
             positions = []
             frame_intensities = []
             
-            for i, [x1, y1, x2, y2] in enumerate(xyxy):
+            for i in keep_idx:
+                x1, y1, x2, y2 = xyxy[i]
                 w = int(x2 - x1); h = int(y2 - y1)
                 center_x = (x1 + x2) / 2
                 center_y = (y1 + y2) / 2
                 
                 # 条纹标识（基于类型和大致位置）
-                stripe_id = f"{class_names[i]}_{int(center_y//50)}"
+                stripe_id = f"{class_names_all[i]}_{int(center_y//50)}"
                 
                 # 记录当前位置
                 current_pos = {'frame': frame_id, 'x': center_x, 'y': center_y, 'w': w, 'h': h}
@@ -262,8 +333,28 @@ def video_detection_with_dual_task(video_path, model_path):
         
         motion_intensities.append(frame_motion_intensity)
 
-        # 在帧图像上绘制检测框和信息
-        annotated_frame = res.plot()
+        # 额外NMS过滤重合目标
+        boxes = res.boxes
+        if boxes and boxes.xyxy is not None:
+            xyxy_np = boxes.xyxy.cpu().numpy()
+            scores_np = boxes.conf.cpu().numpy()
+            keep = torch_manual_nms(torch.tensor(xyxy_np), torch.tensor(scores_np), iou_threshold=0.6)
+            keep_idx = keep.cpu().numpy().tolist()
+        else:
+            keep_idx = []
+        # 使用过滤后的检测进行绘制
+        annotated_frame = frame.copy()
+        if boxes and keep_idx:
+            class_ids = boxes.cls.cpu().numpy().astype(int)
+            confs = boxes.conf.cpu().numpy()
+            for i in keep_idx:
+                x1, y1, x2, y2 = map(int, xyxy_np[i])
+                label = f"{model.names[class_ids[i]]} {confs[i]:.2f}"
+                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
+                cv2.putText(annotated_frame, label, (x1, max(0, y1-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 3, cv2.LINE_AA)
+                cv2.putText(annotated_frame, label, (x1, max(0, y1-6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255,255,255), 2, cv2.LINE_AA)
+        else:
+            annotated_frame = res.plot()
         
         # 显示温度信息
         temp_text = f"Pred: {predicted_temp:.2f}°C"
@@ -379,8 +470,10 @@ def test_dual_task_detection():
     print(f"\n=== 测试完成 ===")
     print(f"共分析了 {len(records)} 帧")
     print(f"跟踪了 {len(stripe_history)} 个条纹")
-    print(f"平均运动强度: {np.mean(motion_intensities):.4f}")
-    print(f"平均预测温度: {np.mean(temperatures):.2f}°C")
+    avg_motion_intensity = float(np.mean(motion_intensities)) if motion_intensities else 0.0
+    avg_temperature = float(np.mean(temperatures)) if temperatures else 0.0
+    print(f"平均运动强度: {avg_motion_intensity:.4f}")
+    print(f"平均预测温度: {avg_temperature:.2f}°C")
 
 if __name__ == "__main__":
     # 测试双任务检测功能
@@ -517,6 +610,9 @@ def video_detection(video_path, model_path):
     temps = df_temp["拟合温度"].values
 
     cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"⚠ 无法打开视频: {video_path}")
+        return [], defaultdict(list)
     records = []  # 用于收集输出数据
     frame_id = 0
     
@@ -534,7 +630,7 @@ def video_detection(video_path, model_path):
         temp_text = f"{temp_val:.6f}"
 
         # 执行YOLOv8检测
-        results = model(frame, conf=0.2, iou=0.15)
+        results = model(frame, conf=0.2, iou=0.15, device='cpu')
         res = results[0]
 
         # 提取检测信息

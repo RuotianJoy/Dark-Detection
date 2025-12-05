@@ -12,6 +12,7 @@ from pathlib import Path
 from ultralytics.engine.validator import BaseValidator
 from ultralytics.models.yolo.detect import DetectionValidator
 from ultralytics.utils import DEFAULT_CFG
+import math
 from copy import copy
 import numpy as np
 # 导入手动NMS实现
@@ -19,26 +20,28 @@ from manual_nms import torch_manual_nms, manual_nms
 
 class ThermalRegressionHead(nn.Module):
     """热回归头 - 实现论文中的温度预测模块"""
-    def __init__(self, input_channels=1024, hidden_dim=256):
+    def __init__(self, input_channels=1024, hidden_dim=256, out_min=0.0, out_max=60.0):
         super().__init__()
         self.global_avg_pool = nn.AdaptiveAvgPool2d(1)
         self.hidden_layer = nn.Linear(input_channels, hidden_dim)
         self.output_layer = nn.Linear(hidden_dim, 1)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(0.2)
+        self.out_min = out_min
+        self.out_max = out_max
+        
+    def set_output_range(self, out_min, out_max):
+        self.out_min = float(out_min)
+        self.out_max = float(out_max)
         
     def forward(self, features):
-        # 全局平均池化
         pooled = self.global_avg_pool(features)
         pooled = pooled.view(pooled.size(0), -1)
-        
-        # 隐藏层
         hidden = self.relu(self.hidden_layer(pooled))
         hidden = self.dropout(hidden)
-        
-        # 输出层
-        temperature = self.output_layer(hidden)
-        return temperature.squeeze(-1)
+        raw = self.output_layer(hidden)
+        scaled = torch.sigmoid(raw) * (self.out_max - self.out_min) + self.out_min
+        return scaled.squeeze(-1)
 
 class CustomYOLODataset(YOLODataset):
     """自定义数据集类 - 处理6列标签格式"""
@@ -204,12 +207,26 @@ class CustomYOLO(YOLO):
     """自定义YOLO模型 - 实现双任务学习架构"""
     def __init__(self, model='yolo12s.pt'):
         super().__init__(model)
+        self._patch_torchvision_nms()
+        self._feature_hook_output = None
+        self._feature_layer = None
+        self._register_feature_hooks_all()
         # 使用字典存储自定义组件，避免属性访问问题
         self._custom_components = {
             'thermal_head': None,
             'multi_task_loss': MultiTaskLoss()
         }
         self._add_thermal_head()
+    
+    def _patch_torchvision_nms(self):
+        try:
+            import torchvision
+            def _custom_nms(boxes, scores, iou_threshold):
+                return torch_manual_nms(boxes, scores, iou_threshold)
+            torchvision.ops.nms = _custom_nms
+            print("✓ 使用自定义CPU NMS替代torchvision::nms")
+        except Exception as e:
+            print(f"⚠ 自定义NMS替换失败: {e}")
     
     def get_thermal_head(self):
         """获取热回归头"""
@@ -232,30 +249,30 @@ class CustomYOLO(YOLO):
         input_channels = 1024  # 默认值，放在函数开始处
         
         try:
-            # 方法1: 直接从模型获取特征维度
             if hasattr(self.model, 'model'):
-                model_layers = self.model.model
-                
-                # 尝试获取backbone的最后一层
-                if hasattr(model_layers, 'model'):
-                    backbone = model_layers.model
-                    
-                    # 遍历backbone寻找合适的层
-                    for i in range(len(backbone)-1, -1, -1):
-                        layer = backbone[i]
-                        if hasattr(layer, 'cv3') and hasattr(layer.cv3, 'conv'):
-                            input_channels = layer.cv3.conv.out_channels
-                            print(f"找到特征层 {i}: 通道数 = {input_channels}")
-                            break
-                        elif hasattr(layer, 'conv') and hasattr(layer.conv, 'out_channels'):
-                            input_channels = layer.conv.out_channels
-                            print(f"找到卷积层 {i}: 通道数 = {input_channels}")
-                            break
-                        elif hasattr(layer, 'c2') and hasattr(layer.c2, 'conv'):
-                            input_channels = layer.c2.conv.out_channels
-                            print(f"找到C2层 {i}: 通道数 = {input_channels}")
-                            break
-                
+                layers = getattr(self.model, 'model')
+                backbone = layers
+                length = len(backbone) if hasattr(backbone, '__len__') else 0
+                for i in range(length-1, -1, -1):
+                    layer = backbone[i]
+                    if hasattr(layer, 'cv3') and hasattr(layer.cv3, 'conv'):
+                        input_channels = layer.cv3.conv.out_channels
+                        self._feature_layer = layer
+                        print(f"找到特征层 {i}: 通道数 = {input_channels}")
+                        break
+                    elif hasattr(layer, 'conv') and hasattr(layer.conv, 'out_channels'):
+                        input_channels = layer.conv.out_channels
+                        self._feature_layer = layer
+                        print(f"找到卷积层 {i}: 通道数 = {input_channels}")
+                        break
+                    elif hasattr(layer, 'c2') and hasattr(layer.c2, 'conv'):
+                        input_channels = layer.c2.conv.out_channels
+                        self._feature_layer = layer
+                        print(f"找到C2层 {i}: 通道数 = {input_channels}")
+                        break
+                if self._feature_layer is not None:
+                    self._register_feature_hook(self._feature_layer)
+        
         except Exception as e:
             print(f"⚠ 自动检测通道数失败: {e}")
             print("使用默认通道数 1024")
@@ -263,6 +280,8 @@ class CustomYOLO(YOLO):
         # 创建热回归头
         try:
             self._custom_components['thermal_head'] = ThermalRegressionHead(input_channels)
+            device = next(self.model.parameters()).device
+            self._custom_components['thermal_head'].to(device)
             print(f"✓ 成功创建热回归头，输入通道数: {input_channels}")
             return True
         except Exception as e:
@@ -279,15 +298,24 @@ class CustomYOLO(YOLO):
     
     def forward_with_temperature(self, x):
         """前向传播，同时预测检测和温度"""
-        # 标准YOLO前向传播
-        yolo_output = self.model(x)
+        x_resized = self._resize_to_stride(x)
+        self._feature_hook_output = None
+        yolo_output = self.model(x_resized)
         
         # 获取backbone特征用于温度预测
         thermal_head = self.get_thermal_head()
         if thermal_head is not None:
             try:
-                # 从backbone提取特征
-                features = self._extract_backbone_features(x)
+                features = self._feature_hook_output
+                if features is None or len(features.shape) != 4:
+                    features = self._extract_backbone_features(x_resized)
+                if features is not None and isinstance(features, torch.Tensor):
+                    c = features.shape[1]
+                    expected = thermal_head.hidden_layer.in_features
+                    if c != expected:
+                        device = next(self.model.parameters()).device
+                        self._custom_components['thermal_head'] = ThermalRegressionHead(c).to(device)
+                        thermal_head = self.get_thermal_head()
                 temp_output = thermal_head(features)
                 return yolo_output, temp_output
             except Exception as e:
@@ -295,33 +323,49 @@ class CustomYOLO(YOLO):
                 return yolo_output, None
         
         return yolo_output, None
-    
-    def _extract_backbone_features(self, x):
-        """从backbone提取特征 - 适配YOLO11/12"""
+
+    def _resize_to_stride(self, x, stride=32):
+        b, c, h, w = x.shape
+        nh = math.ceil(h / stride) * stride
+        nw = math.ceil(w / stride) * stride
+        if nh == h and nw == w:
+            return x
+        return F.interpolate(x, size=(nh, nw), mode='bilinear', align_corners=False)
+
+    def _register_feature_hook(self, layer):
         try:
-            if hasattr(self.model, 'model') and hasattr(self.model.model, 'model'):
-                backbone = self.model.model.model
-                
-                # 逐层前向传播
-                features = x
-                for i, layer in enumerate(backbone):
-                    features = layer(features)
-                    # 在倒数第二层或第三层提取特征
-                    if i >= len(backbone) - 3:
-                        # 检查特征维度是否合适
-                        if len(features.shape) == 4:  # [B, C, H, W]
-                            return features
-                
-                return features
-            else:
-                # 如果无法访问backbone，返回输入
-                return x
-                
+            def _hook(module, inputs, output):
+                self._feature_hook_output = output if isinstance(output, torch.Tensor) else output[0]
+            layer.register_forward_hook(_hook)
+        except Exception:
+            pass
+    
+    def _register_feature_hooks_all(self):
+        try:
+            modules = getattr(self.model, 'model', None)
+            if modules is None:
+                return
+            def _hook(module, inputs, output):
+                out = output[0] if isinstance(output, (tuple, list)) else output
+                if isinstance(out, torch.Tensor) and out.ndim == 4:
+                    self._feature_hook_output = out
+            for m in modules:
+                try:
+                    m.register_forward_hook(_hook)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _extract_backbone_features(self, x):
+        try:
+            out = self._feature_hook_output
+            if isinstance(out, torch.Tensor) and out.ndim == 4:
+                return out
+            return None
         except Exception as e:
             print(f"特征提取失败: {e}")
-            # 返回一个合适维度的张量
-            batch_size = x.shape[0]
-            return torch.randn(batch_size, 1024, 8, 8, device=x.device)
+            return None
     
     def train_step(self, batch):
         """训练步骤 - 实现多任务学习"""
@@ -340,6 +384,10 @@ class CustomYOLO(YOLO):
         thermal_head = self.get_thermal_head()
         
         if temp_pred is not None and temperatures is not None and multi_task_loss is not None:
+            try:
+                temperatures = temperatures.to(images.device).float()
+            except Exception:
+                pass
             loss_dict = multi_task_loss(
                 yolo_loss, 
                 temp_pred, 
@@ -352,7 +400,7 @@ class CustomYOLO(YOLO):
     
     def predict_with_temperature(self, source):
         """预测，包含温度信息"""
-        results = super().predict(source)
+        results = super().predict(source, device='cpu', conf=0.25, iou=0.7)
         
         # 如果有热回归头，添加温度预测
         thermal_head = self.get_thermal_head()
@@ -360,8 +408,11 @@ class CustomYOLO(YOLO):
             for result in results:
                 if hasattr(result, 'orig_img'):
                     # 对单张图像进行温度预测
-                    img_tensor = torch.from_numpy(result.orig_img).permute(2, 0, 1).unsqueeze(0).float()
+                    img_np = result.orig_img[:, :, ::-1].copy()
+                    img_tensor = torch.from_numpy(img_np).permute(2, 0, 1).unsqueeze(0).float()
                     img_tensor = img_tensor / 255.0  # 归一化
+                    device = next(self.model.parameters()).device
+                    img_tensor = img_tensor.to(device)
                     
                     with torch.no_grad():
                         _, temp_pred = self.forward_with_temperature(img_tensor)
@@ -369,6 +420,11 @@ class CustomYOLO(YOLO):
                             result.temperature = temp_pred.item()
         
         return results
+
+    def set_temperature_range(self, tmin, tmax):
+        head = self.get_thermal_head()
+        if head is not None:
+            head.set_output_range(tmin, tmax)
     
     @staticmethod
     def box_nms(boxes, scores, iou_threshold):
