@@ -448,17 +448,33 @@ def test_dual_task_detection():
     print("\n开始处理...")
     
     # 检查模型文件
-    model_path = "Model/runs/dual_task_training/weights/best.pt"
-    if not Path(model_path).exists():
-        print(f"⚠ 双任务模型不存在: {model_path}")
-        print("使用备用模型...")
-        model_path = "Model/runs/train_with_temp/weights/best.pt"
-        if not Path(model_path).exists():
-            print(f"⚠ 备用模型也不存在: {model_path}")
-            return
+    candidates = [
+        'Model/runs/dual_task_training/weights/best.pt',
+        'Model/runs/train_with_temp/weights/best.pt',
+        '../../Train/YoloTrain/Model/runs/train_with_temp/weights/best.pt',
+    ]
+    base = Path(__file__).resolve().parents[2]
+    model_path = None
+    for c in candidates:
+        p = (base / Path(str(c).replace('\\','/'))).resolve()
+        if p.exists():
+            model_path = str(p)
+            break
+    if model_path is None:
+        print("⚠ 模型不存在，使用预训练: yolov8n.pt")
+        model_path = 'yolov8n.pt'
     
     # 执行双任务检测
-    video_path = "..\\..\\Vedio\\Processed2.mp4"
+    v_candidates = ['Vedio/Processed2.mp4','Video/Processed2.mp4','../../Vedio/Processed2.mp4']
+    video_path = None
+    for c in v_candidates:
+        p = (base / Path(str(c).replace('\\','/'))).resolve()
+        if p.exists():
+            video_path = str(p)
+            break
+    if video_path is None:
+        print("⚠ 视频文件不存在")
+        return
     records, stripe_history, motion_intensities, temperatures = video_detection_with_dual_task(
         video_path, model_path
     )
@@ -601,7 +617,21 @@ def video_detection(video_path, model_path):
     model.iou = 0.7
 
     # 读取温度表
-    df_temp = pd.read_excel("..\\..\\DataProcess\\temperature\\每30帧拟合温度.xlsx")
+    temp_path_candidates = [
+        'DataProcess/temperature/每30帧拟合温度.xlsx',
+        '../../DataProcess/temperature/每30帧拟合温度.xlsx'
+    ]
+    base = Path(__file__).resolve().parents[2]
+    temp_path = None
+    for c in temp_path_candidates:
+        p = (base / Path(str(c).replace('\\','/'))).resolve()
+        if p.exists():
+            temp_path = str(p)
+            break
+    if temp_path is None:
+        print('⚠ 温度插值数据不存在')
+        return [], defaultdict(list)
+    df_temp = pd.read_excel(temp_path)
     frames = df_temp["帧编号"].values
     temps = df_temp["拟合温度"].values
 
