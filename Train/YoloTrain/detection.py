@@ -453,6 +453,163 @@ def video_detection_with_dual_task(video_path, model_path):
     
     return records, stripe_history, motion_intensities, predicted_temperatures
 
+def video_detection_with_dual_task_from_frames(frames_dir, model_path, frame_step=30):
+    print("=== 启动双任务检测(图片序列) ===")
+    model = CustomYOLO(model_path)
+    model.conf = 0.15
+    model.iou = 0.7
+    has_thermal_head = model.has_thermal_head() if hasattr(model, 'has_thermal_head') else False
+    print(f"温度预测功能: {'启用' if has_thermal_head else '禁用'}")
+    temp_file = find_existing(['DataProcess/temperature/每30帧拟合温度.xlsx','../../DataProcess/temperature/每30帧拟合温度.xlsx'])
+    if temp_file is not None:
+        df_temp = pd.read_excel(temp_file)
+        frames_arr = df_temp["帧编号"].values
+        temps_arr = df_temp["拟合温度"].values
+        print("✓ 加载温度插值数据用于对比")
+        try:
+            temperature_min = float(np.nanmin(temps_arr))
+            temperature_max = float(np.nanmax(temps_arr))
+            if temperature_max > temperature_min:
+                model.set_temperature_range(temperature_min, temperature_max)
+            start_temp_actual = float(np.interp(0, frames_arr, temps_arr))
+        except Exception:
+            temperature_min, temperature_max, start_temp_actual = 0.0, 60.0, 0.0
+    else:
+        frames_arr, temps_arr = None, None
+        temperature_min, temperature_max, start_temp_actual = 0.0, 60.0, 0.0
+        print("⚠ 温度插值数据不存在")
+    image_files = list_frame_images(frames_dir)
+    if not image_files:
+        print(f"⚠ 序列目录无图片: {frames_dir}")
+        return [], defaultdict(list), [], []
+    total_frames = len(image_files)
+    end_temp_actual = float(np.interp((total_frames-1)*frame_step, frames_arr, temps_arr)) if frames_arr is not None else None
+    records = []
+    stripe_history = defaultdict(list)
+    motion_window = 5
+    motion_intensities = []
+    predicted_temperatures = []
+    interpolated_temperatures = []
+    calibration_window = 30
+    raw_preds_for_cal = []
+    interps_for_cal = []
+    cal_a, cal_b = 1.0, 0.0
+    calibrated = False
+    last_predicted_temp = None
+    for frame_id, img_path in enumerate(image_files):
+        frame = cv2.imread(img_path)
+        if frame is None:
+            continue
+        if frames_arr is not None and temps_arr is not None:
+            interp_temp = float(np.interp(frame_id*frame_step, frames_arr, temps_arr))
+            interpolated_temperatures.append(interp_temp)
+        else:
+            interp_temp = 0.0
+        if has_thermal_head:
+            results = model.predict_with_temperature(frame)
+            predicted_temp = results[0].temperature if hasattr(results[0], 'temperature') else interp_temp
+            if frames_arr is not None and temps_arr is not None:
+                if not calibrated and len(raw_preds_for_cal) < calibration_window:
+                    raw_preds_for_cal.append(predicted_temp)
+                    interps_for_cal.append(interp_temp)
+                    if len(raw_preds_for_cal) == calibration_window:
+                        try:
+                            cal_a, cal_b = np.polyfit(raw_preds_for_cal, interps_for_cal, 1)
+                            calibrated = True
+                        except Exception:
+                            calibrated = False
+                if calibrated:
+                    predicted_temp = float(cal_a * predicted_temp + cal_b)
+                if frame_id == 0:
+                    predicted_temp = start_temp_actual
+                if end_temp_actual is not None and frame_id == total_frames - 1:
+                    predicted_temp = end_temp_actual
+            try:
+                predicted_temp = float(np.clip(predicted_temp, temperature_min, temperature_max))
+            except Exception:
+                pass
+            if last_predicted_temp is not None:
+                predicted_temp = max(predicted_temp, last_predicted_temp)
+            last_predicted_temp = predicted_temp
+            predicted_temperatures.append(predicted_temp)
+        else:
+            results = model(frame, conf=0.35, iou=0.7, device='cpu')
+            predicted_temp = interp_temp
+            if frames_arr is not None and temps_arr is not None and frame_id == 0:
+                predicted_temp = start_temp_actual
+            if end_temp_actual is not None and frame_id == total_frames - 1:
+                predicted_temp = end_temp_actual
+            try:
+                predicted_temp = float(np.clip(predicted_temp, temperature_min, temperature_max))
+            except Exception:
+                pass
+            if last_predicted_temp is not None:
+                predicted_temp = max(predicted_temp, last_predicted_temp)
+            last_predicted_temp = predicted_temp
+            predicted_temperatures.append(predicted_temp)
+        res = results[0]
+        boxes = res.boxes
+        motion_states = []
+        frame_motion_intensity = 0.0
+        if boxes:
+            class_ids_all = boxes.cls.cpu().numpy().astype(int)
+            class_names_all = [model.names[c] for c in class_ids_all]
+            xyxy_all = boxes.xyxy.cpu().numpy()
+            keep_idx = torch_manual_nms(torch.tensor(xyxy_all), torch.tensor(boxes.conf.cpu().numpy()), iou_threshold=0.6).cpu().numpy().tolist()
+            count = len(keep_idx)
+            positions = []
+            frame_intensities = []
+            for i in keep_idx:
+                x1, y1, x2, y2 = xyxy_all[i]
+                w = int(x2 - x1); h = int(y2 - y1)
+                center_x = (x1 + x2) / 2
+                center_y = (y1 + y2) / 2
+                stripe_id = f"{class_names_all[i]}_{int(center_y//50)}"
+                current_pos = {'frame': frame_id, 'x': center_x, 'y': center_y, 'w': w, 'h': h}
+                stripe_history[stripe_id].append(current_pos)
+                motion_info = analyze_stripe_motion(stripe_history[stripe_id], motion_window)
+                motion_states.append(f"{stripe_id}:{motion_info}")
+                stripe_intensity = calculate_motion_intensity_l2(stripe_history[stripe_id])
+                frame_intensities.append(stripe_intensity)
+                positions.append(f"{w}x{h}@({int(center_x)},{int(center_y)})")
+            frame_motion_intensity = np.mean(frame_intensities) if frame_intensities else 0.0
+            positions_str = "; ".join(positions)
+            motion_str = "; ".join(motion_states)
+        else:
+            types = ""
+            count = 0
+            positions_str = ""
+            motion_str = ""
+            frame_motion_intensity = 0.0
+        motion_intensities.append(frame_motion_intensity)
+        record = {
+            "frame_id": frame_id,
+            "image_path": img_path,
+            "predicted_temperature": round(predicted_temp, 3),
+            "interpolated_temperature": round(interp_temp, 3),
+            "count": count,
+            "positions": positions_str,
+            "motion_states": motion_str,
+            "motion_intensity": round(frame_motion_intensity, 4)
+        }
+        records.append(record)
+    generate_motion_analysis_report(records, stripe_history)
+    df_out = pd.DataFrame(records)
+    output_filename = "dual_task_detection_results_from_frames.xlsx"
+    df_out.to_excel(output_filename, index=False)
+    print(f"\n双任务检测结果已保存到: {output_filename}")
+    if len(motion_intensities) > 10:
+        analyzer = FringeMotionAnalyzer()
+        thermal_features = analyzer.extract_thermal_features(predicted_temperatures)
+        analyzer.pearson_correlation_analysis(motion_intensities[1:], thermal_features[1:])
+        rf_results = analyzer.random_forest_analysis(motion_intensities[1:], thermal_features[1:])
+        analyzer.generate_comprehensive_report("dual_task_analysis_report.txt")
+        analyzer.plot_correlation_analysis(motion_intensities[1:], thermal_features[1:], "dual_task_correlation_analysis.png")
+        print("✓ 统计分析完成")
+        print(f"  R² = {rf_results['r2_score']:.4f}")
+        print(f"  动态特征重要性: {rf_results['dynamic_importance_ratio']*100:.1f}%")
+    return records, stripe_history, motion_intensities, predicted_temperatures
+
 def test_dual_task_detection():
     """测试双任务检测功能"""
     print("=== 双任务检测测试 ===")
@@ -481,20 +638,23 @@ def test_dual_task_detection():
         print("⚠ 模型不存在，使用预训练: yolov8n.pt")
         model_path = 'yolov8n.pt'
     
-    # 执行双任务检测
-    v_candidates = ['Vedio/Processed2.mp4','Video/Processed2.mp4','../../Vedio/Processed2.mp4']
-    video_path = None
-    for c in v_candidates:
-        p = (base / Path(str(c).replace('\\','/'))).resolve()
-        if p.exists():
-            video_path = str(p)
-            break
-    if video_path is None:
-        print("⚠ 视频文件不存在")
-        return
-    records, stripe_history, motion_intensities, temperatures = video_detection_with_dual_task(
-        video_path, model_path
-    )
+    frames_dir = resolve_frames_dir()
+    if frames_dir:
+        records, stripe_history, motion_intensities, temperatures = video_detection_with_dual_task_from_frames(frames_dir, model_path)
+    else:
+        v_candidates = ['Vedio/Processed2.mp4','Video/Processed2.mp4','../../Vedio/Processed2.mp4']
+        video_path = None
+        for c in v_candidates:
+            p = (base / Path(str(c).replace('\\','/'))).resolve()
+            if p.exists():
+                video_path = str(p)
+                break
+        if video_path is None:
+            print("⚠ 视频文件不存在")
+            return
+        records, stripe_history, motion_intensities, temperatures = video_detection_with_dual_task(
+            video_path, model_path
+        )
     
     print(f"\n=== 测试完成 ===")
     print(f"共分析了 {len(records)} 帧")
