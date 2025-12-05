@@ -16,6 +16,19 @@ def find_existing(candidates):
         if p.exists():
             return str(p)
     return None
+
+def resolve_frames_dir():
+    return find_existing([
+        'VedioProcess/extracted_frames',
+        '../../VedioProcess/extracted_frames'
+    ])
+
+def list_frame_images(frames_dir):
+    p = Path(frames_dir)
+    files = []
+    for ext in ('*.jpg','*.jpeg','*.png','*.bmp'):
+        files.extend(sorted(p.glob(ext), key=lambda x: x.name))
+    return [str(f) for f in files]
 from statistical_analysis import FringeMotionAnalyzer
 import math
 from collections import defaultdict
